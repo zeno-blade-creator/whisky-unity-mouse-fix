@@ -89,25 +89,55 @@ fi
 # That is what silently broke on Aug 12. It is invisible unless you check, so
 # this checks, every launch, and refuses to start rather than hand you a
 # mystery crash.
-bad=""
-for f in d3d11.dll d3d10core.dll dxgi.dll winemetal.dll; do
-  have="$BOTTLE/drive_c/windows/system32/$f"
-  want="$LIB/DXMT/x64/$f"
-  if [ ! -f "$have" ] || [ ! -f "$want" ] || \
-     [ "$(md5 -q "$have" 2>/dev/null)" != "$(md5 -q "$want" 2>/dev/null)" ]; then
-    bad="$bad $f"
-  fi
-done
+check_stack() {
+  bad=""
+  for f in d3d11.dll d3d10core.dll dxgi.dll winemetal.dll; do
+    have="$BOTTLE/drive_c/windows/system32/$f"
+    want="$LIB/DXMT/x64/$f"
+    if [ ! -f "$have" ] || [ ! -f "$want" ] || \
+       [ "$(md5 -q "$have" 2>/dev/null)" != "$(md5 -q "$want" 2>/dev/null)" ]; then
+      bad="$bad $f"
+    fi
+  done
+}
+
+check_stack
 if [ -n "$bad" ]; then
-  echo "STOP - the Direct3D translation layer is not intact."
-  echo "These are not the DXMT versions:$bad"
-  echo ""
-  echo "The game would crash at startup with a graphics error that looks like"
-  echo "something else entirely. Run 'FIX graphics stack.command', then retry."
-  echo ""
-  echo "Press any key."; read -n 1; exit 1
+  echo "The Direct3D layer was overwritten - repairing:$bad"
+  # This happens every time the game is started FROM WHISKY rather than from
+  # this script: Whisky re-applies its configured backend on launch, and its
+  # DXVK package contains only d3d11 + d3d10core, so it overwrites two of
+  # DXMT's four files and leaves the other two. Repair rather than refuse,
+  # because otherwise one launch from Whisky leaves the game unplayable.
+  for f in d3d11.dll d3d10core.dll dxgi.dll winemetal.dll; do
+    cp -f "$LIB/DXMT/x64/$f" "$BOTTLE/drive_c/windows/system32/$f" 2>/dev/null
+    cp -f "$LIB/DXMT/x32/$f" "$BOTTLE/drive_c/windows/syswow64/$f"  2>/dev/null
+  done
+
+  check_stack
+  if [ -n "$bad" ]; then
+    echo ""
+    echo "STOP - repair failed for:$bad"
+    echo "Run 'FIX graphics stack.command' and read what it reports."
+    echo ""
+    echo "Press any key."; read -n 1; exit 1
+  fi
+  echo "  repaired - all four DLLs are DXMT again"
+else
+  echo "Graphics layer: DXMT, all four DLLs verified."
 fi
-echo "Graphics layer: DXMT, all four DLLs verified."
+
+# Stop it happening again. Whisky overwrites the DLLs because the bottle is
+# still configured to want DXVK; setting the backend to DXMT makes Whisky
+# re-apply the RIGHT thing instead of the wrong one.
+META="$BOTTLE/Metadata.plist"
+if [ -f "$META" ] && ! plutil -p "$META" 2>/dev/null | grep -q '"backend" => "dxmt"'; then
+  pgrep -x Whisky >/dev/null || {
+    plutil -replace graphicsConfig.backend -string "dxmt" "$META" 2>/dev/null
+    plutil -replace launcherConfig.autoEnableDXVK -bool false "$META" 2>/dev/null
+    echo "  set Whisky's own backend to DXMT so it stops re-applying DXVK"
+  }
+fi
 
 # --- stop anything left over ------------------------------------------------
 echo "Clearing anything still running..."
