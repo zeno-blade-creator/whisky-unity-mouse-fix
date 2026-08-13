@@ -1,0 +1,11 @@
+===================================================
+  Build patched wine-11.0 and verify against Whisky
+===================================================
+
+Reference engine : /Users/enzomarkarian/Library/Application Support/com.franke.Whisky/Libraries/Wine/lib/wine/x86_64-unix/win32u.so
+Building with    : 8 jobs
+
+[1/4] configure...
+  configure FAILED - see configure-fixed.log
+
+VOID
