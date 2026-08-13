@@ -58,6 +58,14 @@ REFERENCE="$WLIB/wine/x86_64-unix/win32u.so"
 FT_HEADERS="/opt/homebrew/include/freetype2"
 JOBS=$(sysctl -n hw.ncpu)
 
+# macOS still ships bison 2.3 from 2006 (the last GPLv2 release) at
+# /usr/bin/bison, and Wine needs 3.0+. Homebrew's bison 3.8 is "keg-only", so
+# it is deliberately NOT symlinked onto PATH. Inheriting whatever PATH happens
+# to be set therefore silently picks the wrong one, and configure dies with
+# "Your bison version is too old" - long after you thought the environment was
+# fine. Set the toolchain path explicitly rather than trusting inheritance.
+export PATH="/opt/homebrew/opt/bison/bin:/opt/homebrew/bin:$PATH"
+
 echo "==================================================="
 echo "  Build patched wine-11.0 and verify against Whisky"
 echo "==================================================="
@@ -72,6 +80,23 @@ fail=0
 grep -q "enable_mouse_in_pointer" "$TREE/dlls/win32u/input.c" 2>/dev/null \
   || { echo "ERROR: tree is not patched. Run apply-pointer-patch.py first."; fail=1; }
 [ "$fail" = 0 ] || { echo ""; echo "VOID - preconditions not met. Nothing was built."; exit 1; }
+
+# --- toolchain gate ----------------------------------------------------------
+# Check the tools BEFORE spending 15 minutes discovering one of them is wrong.
+BISON_V=$(bison --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+' | head -1)
+BISON_MAJOR=${BISON_V%%.*}
+echo "Toolchain:"
+printf "  %-10s %s\n" "bison" "$(command -v bison) ($BISON_V)"
+printf "  %-10s %s\n" "flex"  "$(command -v flex)"
+printf "  %-10s %s\n" "mingw" "$(command -v x86_64-w64-mingw32-gcc)"
+if [ -z "$BISON_MAJOR" ] || [ "$BISON_MAJOR" -lt 3 ] 2>/dev/null; then
+  echo ""
+  echo "VOID - bison $BISON_V is too old (need 3.0+). Install with:  brew install bison"
+  exit 1
+fi
+command -v x86_64-w64-mingw32-gcc >/dev/null || {
+  echo ""; echo "VOID - mingw-w64 missing. Install with:  brew install mingw-w64"; exit 1; }
+echo ""
 
 echo "Reference engine : $REFERENCE"
 echo "Building with    : $JOBS jobs"
