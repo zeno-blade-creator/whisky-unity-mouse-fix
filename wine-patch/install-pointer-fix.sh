@@ -23,9 +23,24 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 WINE="$HOME/Library/Application Support/com.franke.Whisky/Libraries/Wine"
 TARGET_SO="$WINE/lib/wine/x86_64-unix/win32u.so"
 TARGET_DLL="$WINE/lib/wine/x86_64-windows/win32u.dll"
-BUILT_SO="$HERE/wine-11.0/dlls/win32u/win32u.so"
-BUILT_DLL="$HERE/wine-11.0/dlls/win32u/win32u.dll"
+BUILT_SO="$HERE/crossover-src/sources/wine/dlls/win32u/win32u.so"
+BUILT_DLL="$HERE/crossover-src/sources/wine/dlls/win32u/win32u.dll"
 ORIG="$HERE/whisky-original"
+
+# Imports that legitimately differ, with the reason each one is non-functional.
+# Anything NOT on this list is treated as a real missing capability and blocks
+# the install. The list is deliberately short and specific - it exists so that
+# "explained difference" and "unexplained difference" cannot be confused.
+#
+#   ceil/floor/roundf  clang -O2 emits these as single SSE4.1 roundsd
+#                      instructions instead of calls. Verified that other libm
+#                      imports (atan2, log, pow) are still present, so libm
+#                      linkage is intact - only the inlinable ones vanished.
+#   dyld_stub_binder   Whisky's build uses classic LC_DYLD_INFO lazy binding,
+#                      which needs this symbol; ours uses the newer
+#                      LC_DYLD_CHAINED_FIXUPS, which does not. Linking mode,
+#                      not behaviour. (Confirmed via otool -l on both.)
+BENIGN_MISSING="_ceil _floor _roundf dyld_stub_binder"
 
 usage() { echo "usage: $(basename "$0") [install|uninstall|status]"; exit 2; }
 MODE="${1:-install}"
@@ -84,17 +99,48 @@ nm -u "$BUILT_SO" 2>/dev/null | sort -u > /tmp/i_new.txt
 nm -gU "$REF"      2>/dev/null | awk '{print $NF}' | sort -u > /tmp/e_ref.txt
 nm -gU "$BUILT_SO" 2>/dev/null | awk '{print $NF}' | sort -u > /tmp/e_new.txt
 missing=$(comm -23 /tmp/i_ref.txt /tmp/i_new.txt)
-expdiff=$(diff /tmp/e_ref.txt /tmp/e_new.txt | grep -c "^[<>]")
+missing_exports=$(comm -23 /tmp/e_ref.txt /tmp/e_new.txt)
+extra_exports=$(comm -13 /tmp/e_ref.txt /tmp/e_new.txt | tr '\n' ' ')
 
 echo "  imports: $(wc -l < /tmp/i_ref.txt | tr -d ' ') reference vs $(wc -l < /tmp/i_new.txt | tr -d ' ') built"
-echo "  exports: $(wc -l < /tmp/e_ref.txt | tr -d ' ') reference vs $(wc -l < /tmp/e_new.txt | tr -d ' ') built ($expdiff differences)"
-if [ -n "$missing" ] || [ "$expdiff" != "0" ]; then
-  echo ""
-  echo "  Missing imports:"; echo "${missing:-    (none)}" | sed 's/^/    /'
+echo "  exports: $(wc -l < /tmp/e_ref.txt | tr -d ' ') reference vs $(wc -l < /tmp/e_new.txt | tr -d ' ') built"
+
+# Split missing imports into "explained" and "unexplained". Only unexplained
+# ones block: a build that differs for a reason we have written down is fine;
+# a build that differs for a reason nobody has checked is not.
+unexplained=""
+for sym in $missing; do
+  case " $BENIGN_MISSING " in
+    *" $sym "*) echo "  [ ok ] missing but explained: $sym" ;;
+    *) unexplained="$unexplained $sym" ;;
+  esac
+done
+
+# A MISSING export would break existing callers. An EXTRA one cannot - nothing
+# in Whisky calls a symbol that did not exist in its own build.
+if [ -n "$missing_exports" ]; then
+  echo "  [FAIL] exports missing from our build:"; echo "$missing_exports" | sed 's/^/          /'
+  echo ""; echo "VOID - nothing installed."; exit 1
+fi
+[ -n "$extra_exports" ] && echo "  [ ok ] extra exports (harmless): $extra_exports"
+
+if [ -n "$unexplained" ]; then
+  echo "  [FAIL] UNEXPLAINED missing imports:$unexplained"
   echo ""
   echo "VOID - the build is not equivalent to Whisky's engine. Nothing installed."
   exit 1
 fi
+
+# The shm-surface code is the specific thing a vanilla-Wine build would lack.
+# Check for it by name rather than trusting that the right tree was used.
+for s in create_shm_surface process_surface_message; do
+  if strings -a "$BUILT_SO" | grep -q "$s"; then
+    echo "  [ ok ] $s present (CrossOver-derived, as Whisky's is)"
+  else
+    echo "  [FAIL] $s MISSING - this looks like a vanilla-Wine build."
+    echo ""; echo "VOID - nothing installed."; exit 1
+  fi
+done
 
 # The build must actually contain the fix, not merely be equivalent.
 if strings -a "$BUILT_SO" | grep -q "enable %u stub!"; then

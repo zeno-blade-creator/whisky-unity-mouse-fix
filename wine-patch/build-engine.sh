@@ -162,6 +162,28 @@ BUILT="$TREE/dlls/win32u/win32u.so"
 [ -f "$BUILT" ] || { echo "  no win32u.so produced"; echo ""; echo "VOID"; exit 1; }
 echo "  built: $(stat -f %z "$BUILT") bytes"
 
+# --- trap 5: the missing rpath ----------------------------------------------
+# Whisky's win32u.so carries TWO rpaths; a stock build produces only one:
+#
+#     whisky:  @loader_path/    @loader_path/../../
+#     ours:    @loader_path/
+#
+# win32u.so lives in lib/wine/x86_64-unix/, so "@loader_path/../../" is what
+# reaches lib/ - where libfreetype.6.dylib actually is. Without it, Wine's
+# dlopen("libfreetype.6.dylib") finds nothing and prints
+#
+#     Wine cannot find the FreeType font library.
+#
+# which looks like a missing dependency but is really a missing search path.
+# Note this is the SECOND font failure that no symbol-level check can catch:
+# the imports were right, the soname was right, all 32 required freetype
+# symbols were present in the dylib - and it still could not load it. The only
+# thing that caught it was running the engine and reading what it said.
+if ! otool -l "$BUILT" | grep -A2 LC_RPATH | grep -q "@loader_path/\.\./\.\./"; then
+  install_name_tool -add_rpath "@loader_path/../../" "$BUILT" \
+    && echo "  added missing rpath: @loader_path/../../"
+fi
+
 # --- gate 2: equivalence with Whisky's engine --------------------------------
 echo "[4/4] verifying against Whisky's engine..."
 nm -u  "$REFERENCE" 2>/dev/null | sort -u > /tmp/i_ref.txt
@@ -196,6 +218,17 @@ strings -a "$BUILT" | grep -q "enable %u stub!" \
 otool -L "$BUILT" 2>/dev/null | grep -q CoreText \
   && echo "  [ ok ] CoreText linked (font backend compiled in)" \
   || { echo "  [FAIL] CoreText not linked"; ok=0; }
+
+# rpath parity - "compiled in" is not the same as "can actually load at runtime"
+ref_rp=$(otool -l "$REFERENCE" | grep -A2 LC_RPATH | grep "path " | awk '{print $2}' | sort | tr '\n' ' ')
+new_rp=$(otool -l "$BUILT"     | grep -A2 LC_RPATH | grep "path " | awk '{print $2}' | sort | tr '\n' ' ')
+if [ "$ref_rp" = "$new_rp" ]; then
+  echo "  [ ok ] rpaths match Whisky's: $new_rp"
+else
+  echo "  [FAIL] rpath mismatch - freetype will fail to load at runtime"
+  echo "         whisky: $ref_rp"
+  echo "         ours  : $new_rp"; ok=0
+fi
 
 echo ""
 if [ "$ok" = 1 ]; then
