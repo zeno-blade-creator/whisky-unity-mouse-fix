@@ -1,0 +1,26 @@
+# Big downloads and extracted source trees - reproducible, never commit.
+*.tar.gz
+*.tar.xz
+wine-patch/crossover-src/
+wine-patch/wine-11.0/
+wine-patch/pristine/
+
+# Build outputs and binaries - reproducible from the patch + build script.
+wine-patch/built/
+wine-patch/built-reference/
+*.so
+*.dll
+
+# Backups. Git replaces these; keeping them would just be noise.
+wine-patch/backups/
+graphics-backup-*/
+bottle-registry-backup-*/
+*.bak-*
+*.reg
+
+# Logs
+*.log
+build.exit
+
+# macOS
+.DS_Store
