@@ -1,0 +1,195 @@
+# Mouse-click fix for Unity 6 games in Whisky (macOS)
+
+**The problem:** you're running a Windows game on your Mac through
+[Whisky](https://github.com/frankea/Whisky). The cursor moves fine. Menus
+highlight when you hover. But **nothing you click responds.** Keyboard works,
+mouse movement works, clicks do nothing.
+
+**This fixes it.** Left click, right click, middle click, and click-and-drag all
+work afterwards.
+
+Games affected: anything built with **Unity 6** — released late 2025, so mostly
+newer titles. Older games were never affected. Confirmed working with PEAK;
+the same bug is reported for Civilization VI and others.
+
+---
+
+## Why it happens
+
+Unity 6 asks Windows for a *newer* kind of mouse message than games used to use,
+then listens only for that kind. Whisky's version of Wine doesn't implement it —
+it replies "not implemented" and keeps sending the old kind of message, which the
+game isn't listening for. So the clicks genuinely happen; nothing is listening.
+
+CodeWeavers implemented this properly in **CrossOver 26.3**. Whisky's engine is
+built from an *older* CrossOver, from before that work existed. This installs an
+engine that has it.
+
+> The fix itself is CodeWeavers' work, used under the LGPL licence.
+> See [Credit and licence](#credit-and-licence).
+
+---
+
+## Before you start
+
+You need:
+
+- **A Mac** (this is macOS-only)
+- **Whisky installed**, with a working bottle and your game already running in it
+- **About 20 minutes**, most of which is your computer working while you don't
+- **Around 2 GB of free disk space** during the build
+
+You do **not** need to know how to program. Every command below is copy-and-paste.
+
+---
+
+## Install
+
+### Step 1 — Open Terminal
+
+Press **Cmd + Space**, type `Terminal`, press **Enter**. A window with text
+appears. That's it — that's the terminal.
+
+### Step 2 — Download this project
+
+Copy this line, paste it into Terminal, press **Enter**:
+
+```bash
+git clone https://github.com/zeno-blade-creator/whisky-unity-mouse-fix.git ~/whisky-mouse-fix
+```
+
+If it says `git: command not found`, macOS will offer to install developer
+tools — accept, wait for it to finish, then run the line again.
+
+### Step 3 — Run the installer
+
+```bash
+cd ~/whisky-mouse-fix/wine-patch && ./install.sh
+```
+
+That's the whole thing. The script will:
+
+1. Check you have what's needed, and **offer to install anything missing**
+2. Download CodeWeavers' source code (~142 MB)
+3. Build it (~15 minutes — leave it running)
+4. Check the result is sound **before** touching anything
+5. Back up your original engine, then install the new one
+
+**It stops rather than guessing.** If any check fails it tells you which one and
+changes nothing, so you're never left half-installed.
+
+### Step 4 — Play
+
+Start your game as usual and try clicking.
+
+---
+
+## If something goes wrong
+
+### Undo everything
+
+```bash
+cd ~/whisky-mouse-fix/wine-patch && ./install-pointer-fix.sh uninstall
+```
+
+This puts your original engine back exactly as it was. Your games and Whisky
+setup are untouched.
+
+### The game crashes when it starts
+
+Almost certainly **not** this fix. Whisky switches graphics systems by copying
+files into your bottle, and its two graphics packages contain different numbers
+of files — so switching leaves a mismatched set that can't start a game. Launching
+a game *from Whisky* can trigger it.
+
+The error usually mentions failing to create a graphics device, or
+`0x80004005`, and looks nothing like a graphics problem.
+
+Fix it by running:
+
+```bash
+cd ~/whisky-mouse-fix && ./"FIX graphics stack.command"
+```
+
+Full explanation in [FINDINGS.md](FINDINGS.md#2-whiskys-backend-switch-is-not-transactional).
+
+### The game says it can't switch resolution
+
+On a Retina Mac, macOS reports your screen as a smaller size than it physically
+is, and Unity saves that fake size. Wine then checks it against real display
+modes, finds nothing matching, and refuses to start — permanently, because the
+bad value is saved.
+
+Fix: delete the saved resolution so the game asks for your screen's real size.
+[Details and the fix](FINDINGS.md#3-the-retina-resolution-trap).
+
+### Check what's currently installed
+
+```bash
+cd ~/whisky-mouse-fix/wine-patch && ./install-pointer-fix.sh status
+```
+
+---
+
+## Is this safe?
+
+Reasonable question — you're installing something into the layer that handles all
+window and input operations.
+
+- **You build it yourself.** Nothing pre-compiled is downloaded. The source comes
+  straight from CodeWeavers' official servers, and your own Mac compiles it.
+- **Your original is backed up** before anything is replaced, and `uninstall`
+  restores it.
+- **The installer refuses to install anything it can't verify.** It compares the
+  built engine against your existing one and stops if they don't match up.
+
+If you'd rather read the code first, the whole thing is three shell scripts and
+one Python file in `wine-patch/`.
+
+---
+
+## What it actually replaces
+
+One file: `win32u.so` inside Whisky's Wine — the part that handles windows and
+input. Your bottles, games, saves and settings are never touched.
+
+The build produces a Windows-side file too, but it's only installed if it
+genuinely differs, which it doesn't here.
+
+---
+
+## The deeper write-up
+
+[**FINDINGS.md**](FINDINGS.md) documents all six problems found getting this
+working, with the evidence for each — including two bugs in Whisky itself, a
+Retina display trap affecting any Mac, and a default setting that can consume
+15 GB of memory. Written for people who want to know *why*, not just *how*.
+
+---
+
+## My personal launcher scripts
+
+The `.command` files in the root of this repo are my own setup for one game
+(PEAK). They're included because they demonstrate the workarounds in practice,
+but they contain **my bottle's ID** and won't work unmodified on your machine.
+
+`FIX graphics stack.command` is the generally useful one — it repairs the
+mismatched-graphics problem described above.
+
+---
+
+## Credit and licence
+
+**The mouse fix is CodeWeavers' work**, from CrossOver 26.3, used under the
+**GNU Lesser General Public License v2.1 or later**. I diagnosed why Whisky was
+affected, and built and verified a way to apply it there. I did not write the
+implementation.
+
+- **Wine** — the compatibility layer everything here builds on ([winehq.org](https://www.winehq.org))
+- **CodeWeavers / CrossOver** — the pointer implementation, published as LGPL
+  source at [codeweavers.com/crossover/source](https://www.codeweavers.com/crossover/source)
+- **Whisky** — the macOS wrapper ([frankea/Whisky](https://github.com/frankea/Whisky),
+  the maintained fork)
+- **DXMT** — Direct3D-to-Metal translation, which is what makes graphics work at all
+
+See [CREDITS.md](CREDITS.md) and [LICENSE](LICENSE).

@@ -8,6 +8,7 @@ wine-patch/pristine/
 # Build outputs and binaries - reproducible from the patch + build script.
 wine-patch/built/
 wine-patch/built-reference/
+# .so binaries are build outputs, except the stock-engine backup
 *.so
 *.dll
 
