@@ -147,7 +147,13 @@ source ./config.sh
 wine_check || { echo ""; echo "Press any key to close."; read -n 1; exit 1; }
 
 echo "Starting $NAME..."
-[ "\${MTL_HUD_ENABLED:-0}" = "1" ] && echo "  FPS overlay: ON" || echo "  FPS overlay: off"
+echo ""
+
+# Repair the Direct3D layer if Whisky overwrote it. Every game needs this:
+# without it Wine falls back to a path that cannot create a graphics device on
+# a Mac, and the game dies at startup with an error that looks like anything
+# but a missing graphics translator.
+ensure_dxmt
 echo ""
 
 ensure_steam

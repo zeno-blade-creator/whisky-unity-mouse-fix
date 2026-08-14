@@ -10,7 +10,10 @@ echo "==================================================="
 echo "  Windows Steam"
 echo "==================================================="
 echo ""
-[ "${MTL_HUD_ENABLED:-0}" = "1" ] && echo "  FPS overlay: ON" || echo "  FPS overlay: off"
+
+# Repair the Direct3D layer if Whisky overwrote it. Skipping this is how you
+# get a black Steam window with no clue as to why.
+ensure_dxmt
 echo ""
 
 ensure_steam
