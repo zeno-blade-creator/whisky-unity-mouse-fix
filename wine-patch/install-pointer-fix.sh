@@ -1,7 +1,7 @@
 #!/bin/bash
 # Install the patched win32u.so into Whisky's Wine engine.
 #
-# Run build-and-verify.sh FIRST. This script re-runs the same import-parity
+# Run build-engine.sh FIRST. This script re-runs the same import-parity
 # check itself and refuses to install anything that fails it, because an
 # unverified engine turns every later test result into noise: a black screen
 # from a binary that was never equivalent proves nothing about the patch.
@@ -86,7 +86,7 @@ echo "  Install the Unity pointer fix into Whisky's Wine"
 echo "==================================================="
 echo ""
 
-[ -f "$BUILT_SO" ] || { echo "No build found at $BUILT_SO"; echo "Run ./build-and-verify.sh first."; echo ""; echo "VOID"; exit 1; }
+[ -f "$BUILT_SO" ] || { echo "No build found at $BUILT_SO"; echo "Run ./build-engine.sh first."; echo ""; echo "VOID"; exit 1; }
 
 # --- gate: parity with whatever is currently installed ----------------------
 # Compare against the ORIGINAL if we have one, else against what is live now.
@@ -188,7 +188,7 @@ echo ""
 if [ "$ok" = 1 ]; then
   echo "SUCCESS - Whisky's engine now implements the Windows pointer API."
   echo ""
-  echo "Next: run 'Play PEAK.command' and try clicking."
+  echo "Next: run 'Play a game.command' and try clicking."
   echo "To undo:  ./install-pointer-fix.sh uninstall"
 else
   echo "VOID - something is wrong with the installed engine. Restore with:"

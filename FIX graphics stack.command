@@ -47,7 +47,7 @@
 #
 # Whisky does that by setting the WINEDLLOVERRIDES environment variable when
 # IT launches something. It does not write the setting into the bottle. So
-# anything launched OUTSIDE Whisky - like 'Play PEAK.command', which calls
+# anything launched OUTSIDE Whisky - like 'Play a game.command', which calls
 # wine directly - never gets the override, and silently falls back to Wine's
 # builtin d3d11 -> wined3d -> OpenGL. On a Mac that path cannot create a
 # device either. Proof, from the crash log's module list:
@@ -64,12 +64,17 @@
 
 set -u
 
-BOTTLE="$HOME/Library/Containers/com.franke.Whisky/Bottles/2E15BCAB-7F6A-4116-9BBF-2A78C47970B1"
-LIB="$HOME/Library/Application Support/com.franke.Whisky/Libraries"
+# The bottle is discovered, not hardcoded - see find_bottle() in config.sh.
+# Hardcoding it would mean these scripts only ever worked on one machine.
+cd "$(dirname "$0")" || exit 1
+source ./config.sh
+
+BOTTLE="${WINEPREFIX:-}"
+LIB="$WHISKY_LIB"
 SYS32="$BOTTLE/drive_c/windows/system32"
 SYSWOW="$BOTTLE/drive_c/windows/syswow64"
 STAMP=$(date +%Y%m%d-%H%M%S)
-BACKUP="$HOME/Desktop/Wine Windows Games/graphics-backup-$STAMP"
+BACKUP="$(pwd)/graphics-backup-$STAMP"
 
 # The four files that make up a working D3D11 path. The two NVIDIA shims DXMT
 # also ships (nvapi64, nvngx) are for DLSS and GPU-vendor queries - nothing to
@@ -204,7 +209,7 @@ if [ "$ok" = 1 ]; then
   echo "SUCCESS - the bottle now has one consistent DXMT stack, and Wine is"
   echo "told to use it however the game is launched."
   echo ""
-  echo "Next: run 'Play PEAK.command'."
+  echo "Next: run 'Play a game.command'."
 else
   echo "VOID - the fix did NOT fully apply. Do not draw conclusions from a"
   echo "test run in this state. Restore from:"

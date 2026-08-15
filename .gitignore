@@ -25,3 +25,7 @@ build.exit
 
 # macOS
 .DS_Store
+
+# Per-machine settings, not shared.
+game.conf
+bottle.conf

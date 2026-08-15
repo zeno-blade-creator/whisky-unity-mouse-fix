@@ -30,13 +30,23 @@ engine that has it.
 
 ---
 
+## Start here
+
+> ### 🚀 Never done any of this before?
+> **Read [SETUP.md](SETUP.md) instead.** It's a complete walkthrough from a Mac
+> with nothing installed: Homebrew, Whisky, a bottle, Steam, your game, then this
+> fix. Assumes no programming knowledge and explains every step.
+>
+> The instructions below assume you **already** have Whisky running your game.
+
 ## Before you start
 
 You need:
 
-- **A Mac** (this is macOS-only)
-- **Whisky installed**, with a working bottle and your game already running in it
-- **About 20 minutes**, most of which is your computer working while you don't
+- **A Mac with Apple Silicon** (M1–M4). Intel Macs aren't supported by Whisky.
+- **macOS Sequoia 15.0 or later**
+- **Whisky installed**, with a bottle and your game already running in it
+- **About 20 minutes**, most of it your computer working while you don't
 - **Around 2 GB of free disk space** during the build
 
 You do **not** need to know how to program. Every command below is copy-and-paste.
@@ -167,14 +177,23 @@ Retina display trap affecting any Mac, and a default setting that can consume
 
 ---
 
-## My personal launcher scripts
+## The launcher scripts
 
-The `.command` files in the root of this repo are my own setup for one game
-(PEAK). They're included because they demonstrate the workarounds in practice,
-but they contain **my bottle's ID** and won't work unmodified on your machine.
+The `.command` files in the root of this repo are double-clickable and work on
+any machine — they **find your Whisky bottle automatically** rather than having
+one hardcoded. Nothing here is specific to one game or one Mac.
 
-`FIX graphics stack.command` is the generally useful one — it repairs the
-mismatched-graphics problem described above.
+| Script | What it does |
+|---|---|
+| `Play a game.command` | Launches a Steam game, repairing the graphics stack and clearing the bad saved resolution first. Asks once for the game's Steam App ID and remembers it. |
+| `FIX graphics stack.command` | Repairs the mismatched DXVK/DXMT set described above. |
+| `Launch Steam (Windows).command` | Opens Steam on its own, with the graphics repair applied. |
+| `Add a game.command` | Installs a Steam game by App ID and generates a launcher for it. |
+| `STOP everything.command` | Kills every Windows process, including the runaway debugger. |
+| `Check performance before playing.command` | Warns about anything that will make games run badly. |
+
+If you have more than one bottle and the scripts can't tell which to use, they'll
+list them and ask you to save the right ID into `bottle.conf`.
 
 ---
 

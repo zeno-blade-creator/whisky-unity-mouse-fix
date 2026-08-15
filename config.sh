@@ -1,10 +1,9 @@
 #!/bin/bash
-# Shared settings for the scripts in this folder. Everything sources this, so
-# it is the only file to edit when something moves.
+# Shared settings for every script in this folder. They all source this file, so
+# it is the only place to change a path.
 #
-# REWRITTEN 2026-08-13 for Whisky. The previous version pointed at
-# "Wine Staging.app" and a ~/Games/wine-gaming prefix, neither of which exists
-# any more, so every script that sourced it failed on the first line.
+# Nothing here is specific to one machine: the Wine engine comes from Whisky's
+# standard install location, and the bottle is discovered at runtime.
 
 # --- Wine engine ------------------------------------------------------------
 # Whisky's bundled Wine. This is NOT vanilla Wine - it is CrossOver's Wine,
@@ -14,8 +13,64 @@ WHISKY_LIB="$HOME/Library/Application Support/com.franke.Whisky/Libraries"
 WINE="$WHISKY_LIB/Wine/bin/wine"
 WINESERVER="$WHISKY_LIB/Wine/bin/wineserver"
 
-# The bottle - a self-contained fake Windows C: drive, holding Steam and games.
-export WINEPREFIX="$HOME/Library/Containers/com.franke.Whisky/Bottles/2E15BCAB-7F6A-4116-9BBF-2A78C47970B1"
+# --- which bottle? ----------------------------------------------------------
+# A "bottle" is a self-contained fake Windows C: drive holding Steam and your
+# games. Whisky names each one with a random ID, so this is DISCOVERED rather
+# than hardcoded - otherwise these scripts would only ever work on one machine.
+#
+# Order of preference:
+#   1. $WHISKY_BOTTLE, if you set it yourself
+#   2. the bottle named in bottle.conf next to these scripts
+#   3. the only bottle, if there is exactly one
+#   4. the bottle that has Steam installed
+# If it still cannot decide, it lists your bottles and asks you to pick.
+BOTTLES_DIR="$HOME/Library/Containers/com.franke.Whisky/Bottles"
+BOTTLE_CONF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/bottle.conf"
+
+find_bottle() {
+  local b candidates=() withsteam=()
+
+  if [ -n "${WHISKY_BOTTLE:-}" ] && [ -d "$WHISKY_BOTTLE" ]; then
+    echo "$WHISKY_BOTTLE"; return 0
+  fi
+  if [ -f "$BOTTLE_CONF" ]; then
+    b="$(grep -v '^#' "$BOTTLE_CONF" | head -1 | tr -d '[:space:]')"
+    [ -n "$b" ] && [ -d "$BOTTLES_DIR/$b" ] && { echo "$BOTTLES_DIR/$b"; return 0; }
+  fi
+
+  [ -d "$BOTTLES_DIR" ] || return 1
+  for b in "$BOTTLES_DIR"/*/; do
+    [ -d "${b}drive_c" ] || continue
+    candidates+=("${b%/}")
+    [ -f "${b}drive_c/Program Files (x86)/Steam/steam.exe" ] && withsteam+=("${b%/}")
+  done
+
+  case "${#candidates[@]}" in
+    0) return 1 ;;
+    1) echo "${candidates[0]}"; return 0 ;;
+  esac
+  [ "${#withsteam[@]}" = 1 ] && { echo "${withsteam[0]}"; return 0; }
+
+  # Ambiguous - say so rather than guessing wrong.
+  echo "MULTIPLE"; return 2
+}
+
+BOTTLE_PATH="$(find_bottle)"
+if [ "$BOTTLE_PATH" = "MULTIPLE" ]; then
+  echo "You have more than one Whisky bottle and I can't tell which to use."
+  echo ""
+  echo "Your bottles:"
+  for b in "$BOTTLES_DIR"/*/; do
+    name=$(plutil -extract info.name raw "${b}Metadata.plist" 2>/dev/null || echo "unnamed")
+    echo "  $(basename "${b%/}")   ($name)"
+  done
+  echo ""
+  echo "Pick one and save its ID into a file called bottle.conf next to these"
+  echo "scripts. For example:"
+  echo "  echo 'PASTE-THE-ID-HERE' > \"$BOTTLE_CONF\""
+  BOTTLE_PATH=""
+fi
+export WINEPREFIX="$BOTTLE_PATH"
 
 # --- Direct3D translation ---------------------------------------------------
 # DXMT translates Direct3D 11 -> Apple Metal. Without it there is no working
@@ -55,11 +110,13 @@ wine_check() {
     echo "  $WINE"
     echo ""
     echo "Is Whisky installed? Get it from https://github.com/frankea/Whisky"
+    echo "If you have just installed it, open Whisky once so it can set itself up."
     return 1
   fi
-  if [ ! -d "$WINEPREFIX" ]; then
-    echo "ERROR: the Whisky bottle is missing:"
-    echo "  $WINEPREFIX"
+  if [ -z "${WINEPREFIX:-}" ] || [ ! -d "$WINEPREFIX" ]; then
+    echo "ERROR: no Whisky bottle found."
+    echo ""
+    echo "Open Whisky and create a bottle first (see SETUP.md, Part 2)."
     return 1
   fi
   return 0

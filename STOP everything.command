@@ -15,10 +15,10 @@ echo "  Stopping everything"
 echo "==================================================="
 echo ""
 
-# Whisky is the setup that actually works now, so stop its engine too. The old
-# standalone Wine is kept in the list only for leftovers from earlier attempts.
-WINESERVER="/Applications/Wine Staging.app/Contents/Resources/wine/bin/wineserver"
+# Whisky's engine, asked to shut down cleanly. A blanket "pkill wineserver"
+# further down catches any other Wine install as a fallback.
 WHISKY_WINESERVER="$HOME/Library/Application Support/com.franke.Whisky/Libraries/Wine/bin/wineserver"
+WINESERVER="$WHISKY_WINESERVER"
 
 echo "  Stopping games and Steam..."
 pkill -9 -if "steamwebhelper" 2>/dev/null
@@ -91,12 +91,12 @@ sleep 2
 # explorer.exe is Wine's desktop manager - it owns the desktop that every
 # window gets attached to. Killing wineserver does NOT kill it; it just gets
 # orphaned and keeps running. Before this was added, 18 dead explorer.exe
-# processes had built up over two days of testing, all still holding the
-# wine-gaming prefix. That is a prime suspect for windows that open, respond
-# to the mouse, and paint nothing.
+# processes had built up over two days of testing, all still holding a bottle
+# open. That is a prime suspect for windows that open, respond to the mouse,
+# and paint nothing.
 #
-# CrossOver runs its own explorer.exe and MUST NOT be touched - CrossOver is
-# the setup that currently works. So each one is checked for whether it
+# Other Wine-based apps (CrossOver, Porting Kit) run their own explorer.exe
+# and must NOT be touched. So each one is checked for whether it
 # belongs to CrossOver, and skipped if it does.
 echo "  Stopping leftover Wine desktops (explorer.exe)..."
 KILLED=0
