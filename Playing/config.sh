@@ -24,8 +24,32 @@ WINESERVER="$WHISKY_LIB/Wine/bin/wineserver"
 #   3. the only bottle, if there is exactly one
 #   4. the bottle that has Steam installed
 # If it still cannot decide, it lists your bottles and asks you to pick.
-BOTTLES_DIR="$HOME/Library/Containers/com.franke.Whisky/Bottles"
+WHISKY_CONTAINER="$HOME/Library/Containers/com.franke.Whisky"
+BOTTLES_DIR="$WHISKY_CONTAINER/Bottles"
+BOTTLE_REGISTRY="$WHISKY_CONTAINER/BottleVM.plist"
 BOTTLE_CONF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/bottle.conf"
+
+# Ask WHISKY where its bottles are rather than assuming a folder.
+#
+# Whisky records every bottle's location in BottleVM.plist, and bottles do NOT
+# have to live in the default folder - they can be anywhere, including an
+# external drive (Whisky 3.6.1 added explicit support for that). An earlier
+# version of this only scanned Containers/.../Bottles and so reported "no
+# bottles" on a machine that had a perfectly good one somewhere else.
+list_registered_bottles() {
+  [ -f "$BOTTLE_REGISTRY" ] || return 0
+  python3 - "$BOTTLE_REGISTRY" 2>/dev/null <<'PY'
+import plistlib, sys, urllib.parse
+try:
+    d = plistlib.load(open(sys.argv[1], 'rb'))
+except Exception:
+    sys.exit(0)
+for entry in d.get('paths', []):
+    url = entry.get('relative', '') if isinstance(entry, dict) else str(entry)
+    if url.startswith('file://'):
+        print(urllib.parse.unquote(url[7:]).rstrip('/'))
+PY
+}
 
 find_bottle() {
   local b candidates=() withsteam=()
@@ -34,16 +58,28 @@ find_bottle() {
     echo "$WHISKY_BOTTLE"; return 0
   fi
   if [ -f "$BOTTLE_CONF" ]; then
-    b="$(grep -v '^#' "$BOTTLE_CONF" | head -1 | tr -d '[:space:]')"
-    [ -n "$b" ] && [ -d "$BOTTLES_DIR/$b" ] && { echo "$BOTTLES_DIR/$b"; return 0; }
+    b="$(grep -v '^#' "$BOTTLE_CONF" | head -1 | sed 's/[[:space:]]*$//')"
+    if [ -n "$b" ]; then
+      [ -d "$b/drive_c" ] && { echo "$b"; return 0; }                      # full path
+      [ -d "$BOTTLES_DIR/$b/drive_c" ] && { echo "$BOTTLES_DIR/$b"; return 0; }  # just the ID
+    fi
   fi
 
-  [ -d "$BOTTLES_DIR" ] || return 1
-  for b in "$BOTTLES_DIR"/*/; do
-    [ -d "${b}drive_c" ] || continue
-    candidates+=("${b%/}")
-    [ -f "${b}drive_c/Program Files (x86)/Steam/steam.exe" ] && withsteam+=("${b%/}")
-  done
+  # Whisky's own registry first...
+  while IFS= read -r b; do
+    [ -n "$b" ] && [ -d "$b/drive_c" ] || continue
+    candidates+=("$b")
+    [ -f "$b/drive_c/Program Files (x86)/Steam/steam.exe" ] && withsteam+=("$b")
+  done < <(list_registered_bottles)
+
+  # ...then the default folder, in case the registry is missing or stale.
+  if [ "${#candidates[@]}" = 0 ] && [ -d "$BOTTLES_DIR" ]; then
+    for b in "$BOTTLES_DIR"/*/; do
+      [ -d "${b}drive_c" ] || continue
+      candidates+=("${b%/}")
+      [ -f "${b}drive_c/Program Files (x86)/Steam/steam.exe" ] && withsteam+=("${b%/}")
+    done
+  fi
 
   case "${#candidates[@]}" in
     0) return 1 ;;
@@ -60,9 +96,10 @@ if [ "$BOTTLE_PATH" = "MULTIPLE" ]; then
   echo "You have more than one Whisky bottle and I can't tell which to use."
   echo ""
   echo "Your bottles:"
-  for b in "$BOTTLES_DIR"/*/; do
-    name=$(plutil -extract info.name raw "${b}Metadata.plist" 2>/dev/null || echo "unnamed")
-    echo "  $(basename "${b%/}")   ($name)"
+  { list_registered_bottles; ls -d "$BOTTLES_DIR"/*/ 2>/dev/null; } | sort -u | while IFS= read -r b; do
+    [ -d "${b%/}/drive_c" ] || continue
+    name=$(plutil -extract info.name raw "${b%/}/Metadata.plist" 2>/dev/null || echo "unnamed")
+    echo "  ${b%/}   ($name)"
   done
   echo ""
   echo "Pick one and save its ID into a file called bottle.conf next to these"

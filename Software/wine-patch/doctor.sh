@@ -94,20 +94,53 @@ else
 fi
 
 # --- bottles ----------------------------------------------------------------
+# Ask Whisky where its bottles are. They do not have to be in the default
+# folder - Whisky supports putting them anywhere, external drives included - so
+# scanning one directory reports "no bottles" on a machine that has one.
 hdr "Bottles"
-if [ ! -d "$BOTTLES" ]; then
-  bad "no bottles folder - create a bottle in Whisky first"
+REGISTRY="$HOME/Library/Containers/com.franke.Whisky/BottleVM.plist"
+registered() {
+  [ -f "$REGISTRY" ] || return 0
+  python3 - "$REGISTRY" 2>/dev/null <<'PY'
+import plistlib, sys, urllib.parse
+try: d = plistlib.load(open(sys.argv[1],'rb'))
+except Exception: sys.exit(0)
+for e in d.get('paths', []):
+    u = e.get('relative','') if isinstance(e, dict) else str(e)
+    if u.startswith('file://'): print(urllib.parse.unquote(u[7:]).rstrip('/'))
+PY
+}
+
+if [ -f "$REGISTRY" ]; then
+  ok "Whisky's bottle registry found"
+  REG_COUNT=0
+  while IFS= read -r b; do
+    [ -n "$b" ] || continue
+    REG_COUNT=$((REG_COUNT+1))
+    if [ -d "$b/drive_c" ]; then
+      name=$(plutil -extract info.name raw "$b/Metadata.plist" 2>/dev/null || echo "unnamed")
+      steam=""
+      [ -f "$b/drive_c/Program Files (x86)/Steam/steam.exe" ] && steam="  [has Steam]"
+      inf "\"$name\"$steam"
+      inf "  $b"
+    else
+      bad "registered but MISSING from disk:"
+      inf "  $b"
+      inf "  (external drive not plugged in? or the bottle was deleted)"
+    fi
+  done < <(registered)
+  [ "$REG_COUNT" = 0 ] && bad "registry is empty - no bottles created yet"
 else
+  bad "no bottle registry - has Whisky been opened and a bottle created?"
+fi
+
+# The default folder too, in case the registry is stale.
+if [ -d "$BOTTLES" ]; then
   n=0
-  for b in "$BOTTLES"/*/; do
-    [ -d "${b}drive_c" ] || continue
-    n=$((n+1))
-    name=$(plutil -extract info.name raw "${b}Metadata.plist" 2>/dev/null || echo "unnamed")
-    steam=""
-    [ -f "${b}drive_c/Program Files (x86)/Steam/steam.exe" ] && steam="  [has Steam]"
-    inf "$(basename "${b%/}")  \"$name\"$steam"
-  done
-  [ "$n" = 0 ] && bad "no bottles found" || ok "$n bottle(s) found"
+  for b in "$BOTTLES"/*/; do [ -d "${b}drive_c" ] && n=$((n+1)); done
+  inf "default folder holds $n bottle(s)"
+else
+  inf "default folder does not exist (fine if bottles live elsewhere)"
 fi
 
 # --- graphics ---------------------------------------------------------------
