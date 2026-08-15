@@ -188,7 +188,7 @@ echo ""
 if [ "$ok" = 1 ]; then
   echo "SUCCESS - Whisky's engine now implements the Windows pointer API."
   echo ""
-  echo "Next: run 'Play a game.command' and try clicking."
+  echo "Next: launch your game and try clicking."
   echo "To undo:  ./install-pointer-fix.sh uninstall"
 else
   echo "VOID - something is wrong with the installed engine. Restore with:"

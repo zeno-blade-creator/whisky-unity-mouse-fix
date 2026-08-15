@@ -157,6 +157,97 @@ ensure_dxmt() {
   return 0
 }
 
+# Clear the saved screen size so the game asks for one that actually exists.
+#
+# On a Retina Mac, macOS reports the screen as smaller than it physically is
+# (e.g. 1470x956 when it is really 2560x1664). Unity saves that logical number.
+# Wine then matches resolution requests against REAL display modes, finds nothing
+# matching, and refuses to start:
+#
+#     Couldn't switch to requested monitor resolution
+#
+# and the bad value persists, so every future launch fails identically.
+#
+# The fix is to DELETE the saved size rather than write a new one. Unity's
+# borderless fullscreen means "use the display's native resolution", so with
+# nothing saved it asks for a size that always exists - on any monitor, on any
+# Mac, with no hardcoded numbers.
+#
+# Unity stores these per game under Software\<Publisher>\<Game> and appends a
+# per-title hash to every setting name, so both the games and the exact key
+# names are discovered from the registry. That is what makes this work for any
+# Unity game rather than the one it was written for.
+clear_saved_resolution() {
+  local reg="$WINEPREFIX/user.reg"
+  [ -f "$reg" ] || return 0
+  cp -p "$reg" "$reg.bak-$(date +%Y%m%d-%H%M%S)" 2>/dev/null
+
+  local out
+  out=$(python3 - "$reg" <<'PY'
+import re, sys
+path = sys.argv[1]
+src  = open(path, encoding='utf-8', errors='surrogateescape').read()
+
+# Every saved pixel dimension, for every Unity game in this bottle.
+new, n = re.subn(r'^"Screenmanager Resolution (?:Width|Height)[^"]*"=dword:[0-9a-f]+\n',
+                 '', src, flags=re.M)
+
+# Exclusive fullscreen (0) is the one mode that demands a real display-mode
+# change and can therefore fail. Switch it to borderless (1), which looks
+# identical and cannot fail. Any other preference is left alone.
+new, m = re.subn(r'^("Screenmanager Fullscreen mode[^"]*"=dword:)00000000$',
+                 r'\g<1>00000001', new, flags=re.M)
+
+if n or m:
+    open(path, 'w', encoding='utf-8', errors='surrogateescape').write(new)
+print(f"{n} {m}")
+PY
+)
+  set -- $out
+  if [ "${1:-0}" != "0" ]; then
+    echo "  cleared ${1} saved screen size(s) so the game uses your real screen"
+  else
+    echo "  no stuck screen size to clear (fine)"
+  fi
+  [ "${2:-0}" != "0" ] && echo "  switched exclusive fullscreen -> borderless (cannot fail)"
+  return 0
+}
+
+# Shut down anything left running from a previous session.
+stop_everything() {
+  pgrep -x Whisky >/dev/null && osascript -e 'tell application "Whisky" to quit' 2>/dev/null
+  sleep 2
+  local p
+  for p in "UnityCrashHandler" "steamwebhelper" "steamerrorreporter" "steamservice" "steam.exe" "conhost.exe"; do
+    pkill -9 -if "$p" 2>/dev/null
+  done
+  pkill -9 -x winedbg 2>/dev/null
+  sleep 2
+  "$WINESERVER" -k 2>/dev/null
+  sleep 2
+}
+
+# Read the game's own log back and say what it reported. The difference between
+# "it didn't work" and knowing why.
+report_game_log() {
+  local logdir="$WINEPREFIX/drive_c/users/$USER/AppData/LocalLow"
+  local log
+  log=$(find "$logdir" -name "Player.log" -newermt "-2 hours" 2>/dev/null | head -1)
+  [ -n "$log" ] || return 0
+  echo "--- what the game reported about graphics ---"
+  grep -m8 -E "Initialize engine version|d3d1[12]:|Vulkan detection|Failed to initialize graphics|Couldn't switch to requested|could not switch resolution" \
+    "$log" | sed 's/^/  /'
+  if grep -q "Failed to initialize graphics" "$log"; then
+    echo ""; echo "  => Graphics layer failed. Run 'FIX graphics stack.command'."
+  elif grep -q "Couldn't switch to requested monitor resolution" "$log"; then
+    echo ""; echo "  => Resolution problem, not a graphics-layer problem."
+  else
+    echo ""; echo "  => No graphics failure recorded."
+  fi
+  echo "  full log: $log"
+  echo "---------------------------------------------"
+}
+
 # Start Steam if it isn't already up. Waits until it's actually ready.
 #
 # NOTE the -i on pgrep. The process is "Steam.exe" with a capital S, and

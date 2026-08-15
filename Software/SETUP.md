@@ -153,7 +153,7 @@ again.
 ### Run the installer
 
 ```bash
-cd ~/whisky-mouse-fix/wine-patch && ./install.sh
+cd ~/whisky-mouse-fix/Software/wine-patch && ./install.sh
 ```
 
 That's it — one command. It will:
@@ -177,20 +177,24 @@ changes nothing — you can't end up half-installed.
 
 ## Part 6 — Play
 
-You can launch your game normally from Whisky. But the scripts in this repo
-handle two problems automatically, so they're worth using.
+You can launch from Whisky directly, but the scripts here fix two problems for
+you automatically, so they're worth using.
 
-### Set up the launcher
+### Make a launcher for your game — once
 
 Open the folder in Finder:
 
 ```bash
-open ~/whisky-mouse-fix
+open ~/whisky-mouse-fix/Playing
 ```
 
-Double-click **`Play a game.command`**.
+Double-click **`Add a game.command`**.
 
-The first time, it asks for your game's **Steam App ID**. To find it:
+> **macOS may refuse to open it**, saying it's from an unidentified developer.
+> Right-click the file → **Open** → **Open**. You only need to do that once per
+> file.
+
+It asks for your game's **Steam App ID**. To find it:
 
 1. Go to the game's page on [store.steampowered.com](https://store.steampowered.com)
 2. Look at the web address. The number after `/app/` is the App ID:
@@ -200,20 +204,27 @@ https://store.steampowered.com/app/3527290/PEAK/
                                    ^^^^^^^ this is the App ID
 ```
 
-Type that number and press Enter. It remembers it — you won't be asked again.
+Paste that number and press Enter. It will install the game if you don't have it
+yet, then create a file called **`Play <your game>.command`** in the same folder.
 
-> **macOS may refuse to open the file**, saying it's from an unidentified
-> developer. Right-click it → **Open** → **Open**. You only need to do that once
-> per file.
+### From then on, just double-click that
 
-### What the launcher does before starting the game
+`Play <your game>.command` is the only thing you need. Drag it to your Dock if
+you like.
 
-- **Repairs the graphics setup**, which Whisky sometimes breaks when it launches
+Each time you run it, before the game starts it:
+
+- **Repairs the graphics setup**, which Whisky sometimes breaks when *it* launches
   a game
-- **Clears a bad saved screen size** that can make the game permanently refuse to
-  start on a Retina display
+- **Clears a bad saved screen size** that can otherwise make the game permanently
+  refuse to start on a Retina display
+- **Reads the game's own log afterwards** and tells you what it said, so a failure
+  doesn't leave you guessing
 
-Both are explained in [FINDINGS.md](FINDINGS.md).
+Run `Add a game.command` again for each additional game — you'll get one
+launcher per game.
+
+Both repairs are explained in [FINDINGS.md](FINDINGS.md).
 
 ---
 
@@ -224,7 +235,7 @@ Both are explained in [FINDINGS.md](FINDINGS.md).
 Check the fix actually installed:
 
 ```bash
-cd ~/whisky-mouse-fix/wine-patch && ./install-pointer-fix.sh status
+cd ~/whisky-mouse-fix/Software/wine-patch && ./install-pointer-fix.sh status
 ```
 
 It should say `pointer API : IMPLEMENTED`. If it says `STUBBED`, the install
@@ -242,7 +253,7 @@ cd ~/whisky-mouse-fix && ./"FIX graphics stack.command"
 This happens because Whisky copies graphics files into your bottle when it
 launches a game, and its two graphics packages contain different numbers of
 files — so switching leaves a mismatched set. It can recur any time you launch
-from Whisky itself. `Play a game.command` repairs it automatically.
+from Whisky itself. the generated `Play ....command` repairs it automatically.
 
 ### Steam's window is black
 
@@ -256,7 +267,7 @@ cd ~/whisky-mouse-fix && ./"Launch Steam (Windows).command"
 ### "Couldn't switch to requested monitor resolution"
 
 Your Mac's screen reports a size that isn't a real display mode, the game saved
-it, and now it can't start. `Play a game.command` clears this automatically every
+it, and now it can't start. the generated `Play ....command` clears this automatically every
 time — just use it to launch.
 
 ### Everything is stuck / the Mac is slow
@@ -271,7 +282,7 @@ automatically on crashes and which can multiply into hundreds of processes.
 ### I want to undo the whole thing
 
 ```bash
-cd ~/whisky-mouse-fix/wine-patch && ./install-pointer-fix.sh uninstall
+cd ~/whisky-mouse-fix/Software/wine-patch && ./install-pointer-fix.sh uninstall
 ```
 
 Puts Whisky's original files back exactly as they were. Your bottle, games and

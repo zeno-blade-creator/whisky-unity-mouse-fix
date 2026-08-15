@@ -33,7 +33,7 @@ engine that has it.
 ## Start here
 
 > ### 🚀 Never done any of this before?
-> **Read [SETUP.md](SETUP.md) instead.** It's a complete walkthrough from a Mac
+> **Read [SETUP.md](Software/SETUP.md) instead.** It's a complete walkthrough from a Mac
 > with nothing installed: Homebrew, Whisky, a bottle, Steam, your game, then this
 > fix. Assumes no programming knowledge and explains every step.
 >
@@ -74,7 +74,7 @@ tools — accept, wait for it to finish, then run the line again.
 ### Step 3 — Run the installer
 
 ```bash
-cd ~/whisky-mouse-fix/wine-patch && ./install.sh
+cd ~/whisky-mouse-fix/Software/wine-patch && ./install.sh
 ```
 
 That's the whole thing. The script will:
@@ -99,7 +99,7 @@ Start your game as usual and try clicking.
 ### Undo everything
 
 ```bash
-cd ~/whisky-mouse-fix/wine-patch && ./install-pointer-fix.sh uninstall
+cd ~/whisky-mouse-fix/Software/wine-patch && ./install-pointer-fix.sh uninstall
 ```
 
 This puts your original engine back exactly as it was. Your games and Whisky
@@ -118,10 +118,10 @@ The error usually mentions failing to create a graphics device, or
 Fix it by running:
 
 ```bash
-cd ~/whisky-mouse-fix && ./"FIX graphics stack.command"
+cd ~/whisky-mouse-fix/Playing && ./"FIX graphics stack.command"
 ```
 
-Full explanation in [FINDINGS.md](FINDINGS.md#2-whiskys-backend-switch-is-not-transactional).
+Full explanation in [FINDINGS.md](Software/FINDINGS.md#2-whiskys-backend-switch-is-not-transactional).
 
 ### The game says it can't switch resolution
 
@@ -131,12 +131,12 @@ modes, finds nothing matching, and refuses to start — permanently, because the
 bad value is saved.
 
 Fix: delete the saved resolution so the game asks for your screen's real size.
-[Details and the fix](FINDINGS.md#3-the-retina-resolution-trap).
+[Details and the fix](Software/FINDINGS.md#3-the-retina-resolution-trap).
 
 ### Check what's currently installed
 
 ```bash
-cd ~/whisky-mouse-fix/wine-patch && ./install-pointer-fix.sh status
+cd ~/whisky-mouse-fix/Software/wine-patch && ./install-pointer-fix.sh status
 ```
 
 ---
@@ -154,7 +154,7 @@ window and input operations.
   built engine against your existing one and stops if they don't match up.
 
 If you'd rather read the code first, the whole thing is three shell scripts and
-one Python file in `wine-patch/`.
+one Python file in `Software/wine-patch/`.
 
 ---
 
@@ -170,30 +170,48 @@ genuinely differs, which it doesn't here.
 
 ## The deeper write-up
 
-[**FINDINGS.md**](FINDINGS.md) documents all six problems found getting this
+[**FINDINGS.md**](Software/FINDINGS.md) documents all six problems found getting this
 working, with the evidence for each — including two bugs in Whisky itself, a
 Retina display trap affecting any Mac, and a default setting that can consume
 15 GB of memory. Written for people who want to know *why*, not just *how*.
 
 ---
 
-## The launcher scripts
+## What's in here
 
-The `.command` files in the root of this repo are double-clickable and work on
-any machine — they **find your Whisky bottle automatically** rather than having
-one hardcoded. Nothing here is specific to one game or one Mac.
+```
+Playing/     double-click these to play
+Software/    the fix itself, plus the write-ups
+```
+
+### Playing
+
+All double-clickable. They **find your Whisky bottle automatically** rather than
+having one hardcoded, so nothing here is tied to one game or one Mac.
 
 | Script | What it does |
 |---|---|
-| `Play a game.command` | Launches a Steam game, repairing the graphics stack and clearing the bad saved resolution first. Asks once for the game's Steam App ID and remembers it. |
+| **`Add a game.command`** | **Start here.** Give it a game's Steam App ID; it installs the game and creates a `Play <game>.command` you use from then on. Run it once per game. |
+| `Play <game>.command` | Created by the above. Repairs the graphics stack and the saved screen size, then launches that game. |
 | `FIX graphics stack.command` | Repairs the mismatched DXVK/DXMT set described above. |
 | `Launch Steam (Windows).command` | Opens Steam on its own, with the graphics repair applied. |
-| `Add a game.command` | Installs a Steam game by App ID and generates a launcher for it. |
 | `STOP everything.command` | Kills every Windows process, including the runaway debugger. |
 | `Check performance before playing.command` | Warns about anything that will make games run badly. |
 
-If you have more than one bottle and the scripts can't tell which to use, they'll
-list them and ask you to save the right ID into `bottle.conf`.
+> **Tip:** once `Add a game.command` has made your `Play <game>.command`, drag it
+> to your Dock. That's then the only thing you ever need to click.
+
+If you have more than one bottle and the scripts can't tell which to use, they
+list them and ask you to save the right ID into `Playing/bottle.conf`.
+
+### Software
+
+| | |
+|---|---|
+| `wine-patch/` | The fix: `install.sh` (the one command), the build and install scripts, and your backed-up original engine |
+| [`SETUP.md`](Software/SETUP.md) | Complete walkthrough from a Mac with nothing installed |
+| [`FINDINGS.md`](Software/FINDINGS.md) | All six problems, with the evidence for each |
+| [`CREDITS.md`](Software/CREDITS.md) | Who wrote what, and the licence |
 
 ---
 
@@ -211,4 +229,4 @@ implementation.
   the maintained fork)
 - **DXMT** — Direct3D-to-Metal translation, which is what makes graphics work at all
 
-See [CREDITS.md](CREDITS.md) and [LICENSE](LICENSE).
+See [CREDITS.md](Software/CREDITS.md) and [LICENSE](LICENSE).

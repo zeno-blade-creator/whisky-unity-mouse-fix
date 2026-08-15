@@ -29,3 +29,6 @@ build.exit
 # Per-machine settings, not shared.
 game.conf
 bottle.conf
+
+# Generated per-game launchers - each user makes their own with "Add a game".
+Playing/Play *.command
