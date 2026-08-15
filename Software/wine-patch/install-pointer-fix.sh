@@ -24,7 +24,7 @@ WINE="$HOME/Library/Application Support/com.franke.Whisky/Libraries/Wine"
 TARGET_SO="$WINE/lib/wine/x86_64-unix/win32u.so"
 TARGET_DLL="$WINE/lib/wine/x86_64-windows/win32u.dll"
 BUILT_SO="$HERE/crossover-src/sources/wine/dlls/win32u/win32u.so"
-BUILT_DLL="$HERE/crossover-src/sources/wine/dlls/win32u/win32u.dll"
+BUILT_DLL="$HERE/crossover-src/sources/wine/dlls/win32u/x86_64-windows/win32u.dll"
 ORIG="$HERE/whisky-original"
 
 # Imports that legitimately differ, with the reason each one is non-functional.
@@ -94,62 +94,37 @@ REF="$TARGET_SO"
 [ -f "$ORIG/win32u.so" ] && REF="$ORIG/win32u.so"
 
 echo "Verifying the build against Whisky's engine..."
-nm -u "$REF"      2>/dev/null | sort -u > /tmp/i_ref.txt
-nm -u "$BUILT_SO" 2>/dev/null | sort -u > /tmp/i_new.txt
-nm -gU "$REF"      2>/dev/null | awk '{print $NF}' | sort -u > /tmp/e_ref.txt
-nm -gU "$BUILT_SO" 2>/dev/null | awk '{print $NF}' | sort -u > /tmp/e_new.txt
-missing=$(comm -23 /tmp/i_ref.txt /tmp/i_new.txt)
-missing_exports=$(comm -23 /tmp/e_ref.txt /tmp/e_new.txt)
-extra_exports=$(comm -13 /tmp/e_ref.txt /tmp/e_new.txt | tr '\n' ' ')
-
-echo "  imports: $(wc -l < /tmp/i_ref.txt | tr -d ' ') reference vs $(wc -l < /tmp/i_new.txt | tr -d ' ') built"
-echo "  exports: $(wc -l < /tmp/e_ref.txt | tr -d ' ') reference vs $(wc -l < /tmp/e_new.txt | tr -d ' ') built"
-
-# Split missing imports into "explained" and "unexplained". Only unexplained
-# ones block: a build that differs for a reason we have written down is fine;
-# a build that differs for a reason nobody has checked is not.
-unexplained=""
-for sym in $missing; do
-  case " $BENIGN_MISSING " in
-    *" $sym "*) echo "  [ ok ] missing but explained: $sym" ;;
-    *) unexplained="$unexplained $sym" ;;
-  esac
-done
-
-# A MISSING export would break existing callers. An EXTRA one cannot - nothing
-# in Whisky calls a symbol that did not exist in its own build.
-if [ -n "$missing_exports" ]; then
-  echo "  [FAIL] exports missing from our build:"; echo "$missing_exports" | sed 's/^/          /'
-  echo ""; echo "VOID - nothing installed."; exit 1
-fi
-[ -n "$extra_exports" ] && echo "  [ ok ] extra exports (harmless): $extra_exports"
-
-if [ -n "$unexplained" ]; then
-  echo "  [FAIL] UNEXPLAINED missing imports:$unexplained"
+if ! "$HERE/verify-engine.sh" "$REF" "$BUILT_SO"; then
   echo ""
   echo "VOID - the build is not equivalent to Whisky's engine. Nothing installed."
   exit 1
 fi
+echo ""
 
-# The shm-surface code is the specific thing a vanilla-Wine build would lack.
-# Check for it by name rather than trusting that the right tree was used.
-for s in create_shm_surface process_surface_message; do
-  if strings -a "$BUILT_SO" | grep -q "$s"; then
-    echo "  [ ok ] $s present (CrossOver-derived, as Whisky's is)"
-  else
-    echo "  [FAIL] $s MISSING - this looks like a vanilla-Wine build."
-    echo ""; echo "VOID - nothing installed."; exit 1
-  fi
-done
-
-# The build must actually contain the fix, not merely be equivalent.
-if strings -a "$BUILT_SO" | grep -q "enable %u stub!"; then
+# Can we actually write to the engine? Check BEFORE touching anything, so this
+# fails in one second with a usable message instead of at the final copy.
+if [ ! -w "$TARGET_SO" ]; then
+  OWNER=$(stat -f '%Su' "$TARGET_SO" 2>/dev/null); ME=$(whoami)
+  echo "Cannot write to Whisky's engine:"
+  echo "  $TARGET_SO"
+  echo "  owned by: $OWNER      you are: $ME"
   echo ""
-  echo "VOID - the built engine still contains the stub. The patch did not take."
+  if [ "$OWNER" != "$ME" ]; then
+    echo "  Whisky's files belong to $OWNER. Take ownership of your own app data:"
+    echo ""
+    echo "    sudo chown -R \"$ME\" \"$HOME/Library/Application Support/com.franke.Whisky\""
+  else
+    echo "  You own it but it is read-only:"
+    echo ""
+    echo "    chmod u+w \"$TARGET_SO\""
+  fi
+  echo ""
+  echo "  Do NOT re-run this whole script with sudo. That would put root-owned"
+  echo "  files in your home folder and Whisky could no longer manage them."
+  echo ""
+  echo "VOID - nothing was changed."
   exit 1
 fi
-echo "  pointer API implemented in the build: yes"
-echo ""
 
 # --- back up ----------------------------------------------------------------
 mkdir -p "$ORIG"
@@ -167,10 +142,16 @@ echo ""
 cp -f "$BUILT_SO" "$TARGET_SO" || { echo "VOID - copy failed"; exit 1; }
 echo "Installed win32u.so"
 
-if [ -f "$BUILT_DLL" ] && ! cmp -s "$BUILT_DLL" "$TARGET_DLL"; then
-  cp -f "$BUILT_DLL" "$TARGET_DLL" && echo "Installed win32u.dll (it differed)"
+# The PE side only needs replacing if the syscall numbering changed. Say which
+# of the three cases actually happened - an earlier version printed "unchanged"
+# even when the file did not exist, which was a comforting lie.
+if [ ! -f "$BUILT_DLL" ]; then
+  echo "win32u.dll: no PE build found, leaving Whisky's in place"
+  echo "            (fine - the .so is what carries the fix)"
+elif cmp -s "$BUILT_DLL" "$TARGET_DLL"; then
+  echo "win32u.dll: identical to Whisky's, nothing to do"
 else
-  echo "win32u.dll unchanged - left alone (no exports were added or removed)"
+  cp -f "$BUILT_DLL" "$TARGET_DLL" && echo "win32u.dll: installed (it differed)"
 fi
 echo ""
 

@@ -96,6 +96,16 @@ Start your game as usual and try clicking.
 
 ## If something goes wrong
 
+### First: run the doctor
+
+```bash
+cd ~/whisky-mouse-fix/Software/wine-patch && ./doctor.sh
+```
+
+It checks your macOS version, Whisky, whether the fix is actually installed, the
+graphics stack, file ownership, and whether a game launcher exists — then prints
+one report. It changes nothing. Send the whole output to whoever is helping you.
+
 ### Undo everything
 
 ```bash
@@ -209,6 +219,7 @@ list them and ask you to save the right ID into `Playing/bottle.conf`.
 | | |
 |---|---|
 | `wine-patch/` | The fix: `install.sh` (the one command), the build and install scripts, and your backed-up original engine |
+| `wine-patch/doctor.sh` | **Run this when anything goes wrong.** Checks everything and prints one report you can send to someone. Changes nothing. |
 | [`SETUP.md`](Software/SETUP.md) | Complete walkthrough from a Mac with nothing installed |
 | [`FINDINGS.md`](Software/FINDINGS.md) | All six problems, with the evidence for each |
 | [`CREDITS.md`](Software/CREDITS.md) | Who wrote what, and the licence |

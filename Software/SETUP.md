@@ -230,6 +230,16 @@ Both repairs are explained in [FINDINGS.md](FINDINGS.md).
 
 ## Troubleshooting
 
+### Start here — run the doctor
+
+Before anything else, this checks everything at once and tells you what's wrong:
+
+```bash
+cd ~/whisky-mouse-fix/Software/wine-patch && ./doctor.sh
+```
+
+It changes nothing, and its output is the fastest way for someone to help you.
+
 ### Clicking still doesn't work
 
 Check the fix actually installed:

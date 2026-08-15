@@ -145,6 +145,44 @@ EXE=$(find "$GAMEDIR" -maxdepth 2 -iname "*.exe" 2>/dev/null \
 SAFE=$(echo "$NAME" | tr -d '/:\\')
 LAUNCHER="$FOLDER/Play $SAFE.command"
 
+# Can we actually write here? Check BEFORE announcing anything. An earlier
+# version simply ran "cat > $LAUNCHER" and then printed "Created: ..."
+# unconditionally - so when the write failed, the Permission denied scrolled
+# past and the success banner was the last thing on screen. People went looking
+# for a file that had never been created.
+if [ ! -w "$FOLDER" ]; then
+  OWNER=$(stat -f '%Su' "$FOLDER" 2>/dev/null)
+  ME=$(whoami)
+  # The repo root, so the suggested fix covers the whole download rather than
+  # just this one folder.
+  ROOT=$(cd "$FOLDER/.." 2>/dev/null && pwd)
+  [ -d "$ROOT/.git" ] || ROOT="$FOLDER"
+
+  echo ""
+  echo "==================================================="
+  echo "  Can't write to this folder - nothing was created"
+  echo "==================================================="
+  echo ""
+  echo "  $FOLDER"
+  echo "  owned by: $OWNER      you are: $ME"
+  echo ""
+  if [ "$OWNER" != "$ME" ]; then
+    echo "  These files belong to someone else, which usually means the"
+    echo "  project was downloaded using 'sudo'. Take ownership back:"
+    echo ""
+    echo "    sudo chown -R \"$ME\" \"$ROOT\""
+  else
+    echo "  You own these files, but the folder is marked read-only."
+    echo "  Allow yourself to write to it:"
+    echo ""
+    echo "    chmod -R u+w \"$ROOT\""
+  fi
+  echo ""
+  echo "  Then run this again."
+  echo ""
+  echo "Press any key to close."; read -n 1; exit 1
+fi
+
 # Launch through Steam rather than the .exe directly. Steam relaunches the game
 # through itself anyway, and going via Steam means achievements, friends and the
 # overlay all work. The .exe is only used to confirm the install looks sane.
@@ -207,13 +245,36 @@ LAUNCHER_EOF
 
 chmod +x "$LAUNCHER"
 
+# Prove the file exists before claiming it does. Never announce success you
+# have not confirmed - that is how someone ends up hunting for a file that was
+# never written.
+if [ ! -s "$LAUNCHER" ]; then
+  echo ""
+  echo "==================================================="
+  echo "  FAILED - the launcher was not created"
+  echo "==================================================="
+  echo ""
+  echo "  Tried to write:"
+  echo "    $LAUNCHER"
+  echo ""
+  echo "  It isn't there. Look above for an error - usually 'Permission denied'."
+  echo "  Nothing else was changed."
+  echo ""
+  echo "Press any key to close."; read -n 1; exit 1
+fi
+
 echo ""
 echo "==================================================="
 echo "  Done!"
 echo "==================================================="
 echo ""
 echo "  Created:  Play $SAFE.command"
-echo "  It's in this folder. Double-click it to play."
+echo ""
+echo "  Full path (verified to exist):"
+echo "    $LAUNCHER"
+echo ""
+echo "  Open that folder now with:"
+echo "    open \"$FOLDER\""
 echo ""
 echo "  Tip: drag it to your Dock for one-click access."
 echo ""

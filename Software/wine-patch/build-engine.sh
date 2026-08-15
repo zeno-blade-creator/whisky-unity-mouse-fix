@@ -186,49 +186,8 @@ fi
 
 # --- gate 2: equivalence with Whisky's engine --------------------------------
 echo "[4/4] verifying against Whisky's engine..."
-nm -u  "$REFERENCE" 2>/dev/null | sort -u > /tmp/i_ref.txt
-nm -u  "$BUILT"     2>/dev/null | sort -u > /tmp/i_new.txt
-nm -gU "$REFERENCE" 2>/dev/null | awk '{print $NF}' | sort -u > /tmp/e_ref.txt
-nm -gU "$BUILT"     2>/dev/null | awk '{print $NF}' | sort -u > /tmp/e_new.txt
-
-missing_imports=$(comm -23 /tmp/i_ref.txt /tmp/i_new.txt)
-missing_exports=$(comm -23 /tmp/e_ref.txt /tmp/e_new.txt)
-
-echo "  imports : $(wc -l < /tmp/i_ref.txt|tr -d ' ') reference, $(wc -l < /tmp/i_new.txt|tr -d ' ') built"
-echo "  exports : $(wc -l < /tmp/e_ref.txt|tr -d ' ') reference, $(wc -l < /tmp/e_new.txt|tr -d ' ') built"
-
 ok=1
-if [ -n "$missing_imports" ]; then
-  echo "  [FAIL] imports present in Whisky's but MISSING from ours:"
-  echo "$missing_imports" | sed 's/^/          /'; ok=0
-else
-  echo "  [ ok ] no missing imports"
-fi
-# Extra exports are harmless (nothing calls a symbol that did not exist before);
-# MISSING exports would break callers, so only those are fatal.
-if [ -n "$missing_exports" ]; then
-  echo "  [FAIL] exports MISSING from ours:"; echo "$missing_exports" | sed 's/^/          /'; ok=0
-else
-  extra=$(comm -13 /tmp/e_ref.txt /tmp/e_new.txt | tr '\n' ' ')
-  echo "  [ ok ] no missing exports${extra:+ (extra, harmless: $extra)}"
-fi
-strings -a "$BUILT" | grep -q "enable %u stub!" \
-  && { echo "  [FAIL] still contains the stub"; ok=0; } \
-  || echo "  [ ok ] pointer API implemented (stub absent)"
-otool -L "$BUILT" 2>/dev/null | grep -q CoreText \
-  && echo "  [ ok ] CoreText linked (font backend compiled in)" \
-  || { echo "  [FAIL] CoreText not linked"; ok=0; }
-
-# rpath parity - "compiled in" is not the same as "can actually load at runtime"
-ref_rp=$(otool -l "$REFERENCE" | grep -A2 LC_RPATH | grep "path " | awk '{print $2}' | sort | tr '\n' ' ')
-new_rp=$(otool -l "$BUILT"     | grep -A2 LC_RPATH | grep "path " | awk '{print $2}' | sort | tr '\n' ' ')
-if [ "$ref_rp" = "$new_rp" ]; then
-  echo "  [ ok ] rpaths match Whisky's: $new_rp"
-else
-  echo "  [FAIL] rpath mismatch - freetype will fail to load at runtime"
-  echo "         whisky: $ref_rp"
-  echo "         ours  : $new_rp"; ok=0
-fi
+"$HERE/verify-engine.sh" "$REFERENCE" "$BUILT" || ok=0
 
 echo ""
 if [ "$ok" = 1 ]; then
