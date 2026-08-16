@@ -27,6 +27,21 @@ free software. No paid tools.
 > **Which chip do I have?** Apple menu → About This Mac. If it says "Apple M1"
 > through "Apple M4", you're fine. If it says "Intel", this won't work.
 
+> ### ⚠️ Do all of this in ONE account
+>
+> If your Mac has more than one login — a school or work machine often does —
+> **stay in the same account the whole way through.**
+>
+> macOS gives every user their own separate copy of Whisky: its own bottles, its
+> own games, its own Wine engine. Install Whisky as one user and run these
+> commands as another, and everything will look like it worked while changing
+> nothing for the account you actually play in.
+>
+> This is the single most confusing way for this to go wrong, because no error
+> appears. Every step succeeds — in the wrong place.
+>
+> Pick the account you'll play games in, and do everything there.
+
 ---
 
 ## Part 1 — Open Terminal
@@ -239,6 +254,60 @@ cd ~/whisky-mouse-fix/Software/wine-patch && ./doctor.sh
 ```
 
 It changes nothing, and its output is the fastest way for someone to help you.
+
+### "Permission denied"
+
+macOS refuses writes for several *different* reasons that all print the same
+message. The doctor tells you which. In short:
+
+**The file belongs to someone else** (usually `root`, because something got run
+with `sudo` earlier). Take ownership of your own app data:
+
+```bash
+sudo chown -R "$(whoami)" "$HOME/Library/Application Support/com.franke.Whisky"
+```
+
+**You own it but it's locked** — the flags column of `ls -lO` shows `uchg`:
+
+```bash
+chflags -R nouchg "$HOME/Library/Application Support/com.franke.Whisky"
+```
+
+**You own it, it's unlocked, and macOS still says no** — that's the privacy
+system, not file permissions, and `sudo` will not help. System Settings →
+Privacy & Security → **Full Disk Access** → enable Terminal → quit Terminal
+completely and reopen it.
+
+> **Two things not to do.**
+>
+> **Don't run the installer with `sudo`.** It would put root-owned files in your
+> home folder — which is what causes this problem in the first place — and Whisky
+> would no longer be able to manage its own files. Use `sudo` only for the narrow
+> `chown` above.
+>
+> **`sudo cd somewhere && ./script.sh` does not work.** The `sudo` applies only
+> to `cd`; the script then runs without it. The output looks identical to not
+> using `sudo` at all, which is very confusing.
+
+**Can you even use `sudo`?** On a managed or school Mac, your account may not be
+an administrator:
+
+```bash
+id -Gn | grep -q admin && echo "admin - sudo will work" || echo "standard account - sudo will not work"
+```
+
+If it says standard, you'll need whoever administers the Mac.
+
+### "No bottle found" — but I definitely have one
+
+Almost always the two-account problem. Whisky's bottles and Wine engine are
+stored **per macOS user**. Run the doctor: if Whisky is set up under a different
+account, it now says so by name.
+
+To confirm where your bottle really is: open Whisky, select the bottle, click
+**Open C: Drive**, then press **Cmd+I** on the folder in Finder. The **Where:**
+line shows the full path — check the username in it matches the account you're
+typing commands in.
 
 ### Clicking still doesn't work
 

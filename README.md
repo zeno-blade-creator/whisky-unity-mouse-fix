@@ -163,8 +163,10 @@ window and input operations.
 - **The installer refuses to install anything it can't verify.** It compares the
   built engine against your existing one and stops if they don't match up.
 
-If you'd rather read the code first, the whole thing is three shell scripts and
-one Python file in `Software/wine-patch/`.
+If you'd rather read the code first, it's five shell scripts and one Python file
+in `Software/wine-patch/` — `install.sh` (the one you run), `build-engine.sh`,
+`verify-engine.sh`, `install-pointer-fix.sh`, `doctor.sh`, and
+`apply-pointer-patch.py`.
 
 ---
 
@@ -173,8 +175,14 @@ one Python file in `Software/wine-patch/`.
 One file: `win32u.so` inside Whisky's Wine — the part that handles windows and
 input. Your bottles, games, saves and settings are never touched.
 
-The build produces a Windows-side file too, but it's only installed if it
-genuinely differs, which it doesn't here.
+The build also produces a Windows-side `win32u.dll`. The installer compares it
+against the one already there and only replaces it if it genuinely differs, and
+it tells you which of those happened rather than assuming.
+
+> **Whisky's data is per-account.** macOS keeps a separate Whisky — bottles and
+> Wine engine both — for every user account on the Mac. Install this from the
+> same account you actually play in, or it will appear to succeed and change
+> nothing for the account that matters.
 
 ---
 

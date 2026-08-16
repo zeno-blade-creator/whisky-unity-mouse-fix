@@ -22,7 +22,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 WLIB="$HOME/Library/Application Support/com.franke.Whisky/Libraries"
 ENGINE="$WLIB/Wine/lib/wine/x86_64-unix/win32u.so"
-BOTTLES="$HOME/Library/Containers/com.franke.Whisky/Bottles"
 ORIG="$HERE/whisky-original/win32u.so"
 
 hdr() { echo ""; echo "=== $* ==="; }
@@ -56,7 +55,24 @@ echo "==================================================="
 hdr "Your Mac"
 inf "macOS   : $(sw_vers -productVersion) ($(sw_vers -buildVersion))"
 inf "chip    : $(sysctl -n machdep.cpu.brand_string 2>/dev/null)"
-inf "user    : $(whoami)"
+# Which account, and whether it can use sudo. Both matter: Whisky keeps its
+# bottles and its Wine engine SEPARATELY per macOS user, so running this in the
+# wrong account gives a correct report about the wrong world.
+if id -Gn 2>/dev/null | grep -qw admin; then
+  inf "user    : $(whoami)  (administrator - can use sudo)"
+else
+  inf "user    : $(whoami)  (standard account - cannot use sudo)"
+fi
+ME=$(whoami)
+OTHER_USERS=""
+for u in /Users/*/; do
+  n=$(basename "${u%/}")
+  [ "$n" = "Shared" ] && continue
+  [ "$n" = "Guest" ] && continue
+  [ "$n" = "$ME" ] && continue
+  OTHER_USERS="$OTHER_USERS $n"
+done
+[ -n "$OTHER_USERS" ] && inf "other accounts:$OTHER_USERS"
 # Compare numerically rather than matching version prefixes. Apple switched to
 # year-based numbering after Sequoia (15 -> 26), so a hardcoded list of
 # acceptable major versions goes stale and starts failing correct machines.
@@ -98,12 +114,20 @@ else
   else
     ok "INSTALLED - the pointer API is implemented. Clicks should work."
   fi
-  inf "size $SZ bytes, owned by $OWNER"
+  FLAGS=$(ls -lO "$ENGINE" 2>/dev/null | awk '{print $5}')
+  inf "size $SZ bytes, owned by $OWNER, flags: ${FLAGS:--}"
+  # Permission denied has several independent causes on macOS and they look
+  # identical. Name which one, because only the first is fixed by chown.
   if [ "$OWNER" != "$(whoami)" ]; then
     bad "owned by $OWNER, not you - installing will fail with Permission denied"
     inf "fix: sudo chown -R \"$(whoami)\" \"$HOME/Library/Application Support/com.franke.Whisky\""
+    inf "     (do NOT run the installer itself with sudo - that is what creates"
+    inf "      root-owned files in your home folder in the first place)"
+  elif [ "$FLAGS" != "-" ] && [ -n "$FLAGS" ]; then
+    bad "file is locked with flags: $FLAGS - you own it but still cannot write"
+    inf "fix: chflags -R nouchg \"$HOME/Library/Application Support/com.franke.Whisky\""
   elif [ ! -w "$ENGINE" ]; then
-    bad "you own it but cannot write to it"
+    bad "you own it but it is read-only"
     inf "fix: chmod u+w \"$ENGINE\""
   fi
   [ -f "$ORIG" ] && ok "original backed up (uninstall is possible)" \
@@ -201,13 +225,43 @@ if [ "$FOUND" = 0 ]; then
     inf "  echo '$(dirname "$(echo "$HITS" | head -1)")' > \"$REPO/Playing/bottle.conf\""
   else
     echo ""
-    bad "no Wine prefix exists anywhere this script can see."
-    inf "That means no bottle has been created yet, OR it is on a drive or"
-    inf "network share that isn't mounted right now."
-    inf ""
-    inf "Open Whisky and look at its bottle list:"
-    inf "  - if it shows a bottle, click it and note the path it reports"
-    inf "  - if the list is empty, create a bottle, then install Steam into it"
+    # THE most likely explanation, and the one that costs the most time:
+    # Whisky's data is per-account. A report saying "no bottle" is completely
+    # correct while being about the wrong user entirely.
+    OTHER_WHISKY=""
+    for u in /Users/*/; do
+      n=$(basename "${u%/}")
+      [ "$n" = "Shared" ] && continue
+      [ "$n" = "Guest" ] && continue
+      [ "$n" = "$(whoami)" ] && continue
+      if [ -d "${u}Library/Containers/com.franke.Whisky" ] \
+      || [ -d "${u}Library/Application Support/com.franke.Whisky" ]; then
+        OTHER_WHISKY="$OTHER_WHISKY $n"
+      fi
+    done
+
+    if [ -n "$OTHER_WHISKY" ]; then
+      bad "NO BOTTLE IN THIS ACCOUNT - but Whisky is set up in another one:$OTHER_WHISKY"
+      inf ""
+      inf "You are logged in as \"$(whoami)\". Whisky keeps its bottles AND its"
+      inf "Wine engine separately for every macOS user, so work done here has no"
+      inf "effect on the account you actually play in."
+      inf ""
+      inf "Log out, log into that account, and run the install from there:"
+      inf "  git clone https://github.com/zeno-blade-creator/whisky-unity-mouse-fix.git ~/whisky-mouse-fix"
+      inf "  cd ~/whisky-mouse-fix/Software/wine-patch && ./install.sh"
+    else
+      bad "no Wine prefix exists anywhere this script can see."
+      inf "Either no bottle has been created yet, or it is on a drive or network"
+      inf "share that isn't mounted, or it belongs to another macOS account whose"
+      inf "files this account cannot read."
+      inf ""
+      inf "Open Whisky and look at its bottle list:"
+      inf "  - if it shows a bottle, click it, then 'Open C: Drive', then Cmd+I"
+      inf "    on the folder - the 'Where:' line is the path. Check the username"
+      inf "    in that path matches \"$(whoami)\"."
+      inf "  - if the list is empty, create a bottle and install Steam into it"
+    fi
   fi
 fi
 

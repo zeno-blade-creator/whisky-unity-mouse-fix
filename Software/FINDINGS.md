@@ -249,10 +249,114 @@ already in place and what's actually needed is the override, not a path.
 
 ---
 
+## 7. Whisky is per-account, and nothing tells you
+
+Found the hard way when this was installed on a second Mac.
+
+macOS keeps a **completely separate Whisky for every user account** — separate
+bottles, separate games, and a separate Wine engine. Whisky's interface gives no
+indication of this, and no error is ever produced.
+
+On a managed school Mac with two logins, the entire install — clone, build,
+engine replacement — ran as one user:
+
+```
+/Users/eopsstaff/whisky-mouse-fix                the project
+/Users/eopsstaff/Library/.../com.franke.Whisky   an engine, patched successfully
+```
+
+while the bottle containing the game belonged to another:
+
+```
+/Users/eopsstudent/Library/Containers/com.franke.Whisky/Bottles/3D87F42E-...
+```
+
+Two Whisky installations, two Wine engines. The patched one was never the one
+running the game. Every command succeeded. Every diagnostic was accurate. The
+game still didn't click.
+
+**The diagnostic was right and still unhelpful.** `doctor.sh` reported "no bottle
+found" — entirely correct for the account it ran in, and read by everyone as a
+bug in the tool. A tool that correctly reports "not found" while pointed at the
+wrong user is indistinguishable from a broken one, except that it is right.
+
+**Fix:** do everything in one account. `doctor.sh` now prints which account it is
+running as, whether that account can use `sudo`, and — when it finds no bottle —
+which *other* accounts on the Mac have Whisky data.
+
+### The permission layers underneath this
+
+macOS refuses writes for four independent reasons that all surface as the same
+`Permission denied`:
+
+| Layer | Blocked even if… | Inspect with |
+|---|---|---|
+| **Ownership** (`user:group`, `rwx`) | — | `ls -lO file` |
+| **File flags** (`uchg`) | …you own the file | flags column of `ls -lO` |
+| **TCC / privacy** | …you own it *and* it's writable | System Settings → Privacy & Security |
+| **SIP** | …you are root | protects `/System`, `/usr` — not `~/Library` |
+
+Only the first is fixed by `chown`. Being refused on a file you own is exactly
+what pushes people toward `sudo`, which cannot fix a privacy-layer block and
+actively creates ownership problems.
+
+On the machine above, Whisky's engine was owned by `root`:
+
+```
+-rwxr-xr-x@ 1 root staff ... win32u.so
+```
+
+almost certainly because something had earlier been run with `sudo`. Note the
+symmetry: **the account with `sudo` was the one with the permission problem**,
+and the account without it had none, because Whisky created its own files
+normally there. Reaching for `sudo` caused the damage; the hunt for `sudo` then
+caused the account split.
+
+Two traps worth naming:
+
+- **`sudo cd X && ./script`** does not run the script as root. `sudo` applies to
+  `cd`; `&&` then runs the script unprivileged. The output is byte-identical to
+  not using `sudo` at all, so it looks like `sudo` was ignored.
+- **Homebrew is per-installer too.** `/opt/homebrew` belongs to whoever installed
+  it, so `brew install` can fail for a second account on the same Mac.
+
+---
+
 ## Method notes
 
 Several conclusions on this project were confidently wrong. What separated the
 wrong ones from the right ones:
+
+### Your own machine cannot test your assumptions
+
+This worked flawlessly for days on the machine that built it. The **first
+outside user found six genuine defects in an afternoon**, every one in the code:
+
+1. A verification gate that rejected a perfectly correct build, because the same
+   check existed in two scripts and only one had been updated when four
+   differences were found benign.
+2. That install discovering it could not write **after** a 15-minute build,
+   rather than in the one second it takes to test.
+3. `Done! Created: Play PEAK.command` printed when the write had failed.
+4. `win32u.dll unchanged - left alone` printed for a file at a path that never
+   existed, so the reassuring branch always ran.
+5. A hardcoded bottle path, when bottles can live under four different roots or
+   on an external drive.
+6. A `[found]` / `[absent]` report that never opened the folder it found — hiding
+   that the one existing location contained no bottles at all.
+
+The author's machine had every assumption already satisfied: data in the default
+place, files owned by the right user, a writable working directory, and the one
+code path he happened to exercise. None of that was true anywhere else.
+
+### Never announce success you have not verified
+
+Three of those six were the same mistake: a script printing a cheerful
+confirmation of something it had not checked. Two of them cost more time than any
+genuine bug, because a success message stops you looking.
+
+After writing a file, check it exists. After a copy, compare. If a message says
+an action succeeded, something must have confirmed it.
 
 ### Compare imports, not exports
 
