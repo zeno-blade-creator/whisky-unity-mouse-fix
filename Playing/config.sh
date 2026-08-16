@@ -24,9 +24,23 @@ WINESERVER="$WHISKY_LIB/Wine/bin/wineserver"
 #   3. the only bottle, if there is exactly one
 #   4. the bottle that has Steam installed
 # If it still cannot decide, it lists your bottles and asks you to pick.
-WHISKY_CONTAINER="$HOME/Library/Containers/com.franke.Whisky"
+# Whisky's data can live under more than one root, and which one depends on
+# history rather than anything you can see:
+#   com.franke.Whisky        the maintained fork
+#   com.isaacmarovitz.Whisky the ARCHIVED original - and `brew install --cask
+#                            whisky` still installs that one, so plenty of
+#                            people created their first bottle there
+# and either can sit under Containers/ (sandboxed) or Application Support/.
+# Checking only one root is how a machine with a perfectly good bottle gets
+# told it has none.
+WHISKY_ROOTS=(
+  "$HOME/Library/Containers/com.franke.Whisky"
+  "$HOME/Library/Application Support/com.franke.Whisky"
+  "$HOME/Library/Containers/com.isaacmarovitz.Whisky"
+  "$HOME/Library/Application Support/com.isaacmarovitz.Whisky"
+)
+WHISKY_CONTAINER="${WHISKY_ROOTS[0]}"
 BOTTLES_DIR="$WHISKY_CONTAINER/Bottles"
-BOTTLE_REGISTRY="$WHISKY_CONTAINER/BottleVM.plist"
 BOTTLE_CONF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/bottle.conf"
 
 # Ask WHISKY where its bottles are rather than assuming a folder.
@@ -37,8 +51,10 @@ BOTTLE_CONF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/bottle.conf"
 # version of this only scanned Containers/.../Bottles and so reported "no
 # bottles" on a machine that had a perfectly good one somewhere else.
 list_registered_bottles() {
-  [ -f "$BOTTLE_REGISTRY" ] || return 0
-  python3 - "$BOTTLE_REGISTRY" 2>/dev/null <<'PY'
+  local root
+  for root in "${WHISKY_ROOTS[@]}"; do
+    [ -f "$root/BottleVM.plist" ] || continue
+    python3 - "$root/BottleVM.plist" 2>/dev/null <<'PY'
 import plistlib, sys, urllib.parse
 try:
     d = plistlib.load(open(sys.argv[1], 'rb'))
@@ -49,6 +65,18 @@ for entry in d.get('paths', []):
     if url.startswith('file://'):
         print(urllib.parse.unquote(url[7:]).rstrip('/'))
 PY
+  done
+}
+
+# Every Bottles folder across every known root.
+list_bottle_folders() {
+  local root b
+  for root in "${WHISKY_ROOTS[@]}"; do
+    [ -d "$root/Bottles" ] || continue
+    for b in "$root/Bottles"/*/; do
+      [ -d "${b}drive_c" ] && echo "${b%/}"
+    done
+  done
 }
 
 find_bottle() {
@@ -72,13 +100,13 @@ find_bottle() {
     [ -f "$b/drive_c/Program Files (x86)/Steam/steam.exe" ] && withsteam+=("$b")
   done < <(list_registered_bottles)
 
-  # ...then the default folder, in case the registry is missing or stale.
-  if [ "${#candidates[@]}" = 0 ] && [ -d "$BOTTLES_DIR" ]; then
-    for b in "$BOTTLES_DIR"/*/; do
-      [ -d "${b}drive_c" ] || continue
-      candidates+=("${b%/}")
-      [ -f "${b}drive_c/Program Files (x86)/Steam/steam.exe" ] && withsteam+=("${b%/}")
-    done
+  # ...then every Bottles folder, in case the registry is missing or stale.
+  if [ "${#candidates[@]}" = 0 ]; then
+    while IFS= read -r b; do
+      [ -n "$b" ] || continue
+      candidates+=("$b")
+      [ -f "$b/drive_c/Program Files (x86)/Steam/steam.exe" ] && withsteam+=("$b")
+    done < <(list_bottle_folders)
   fi
 
   case "${#candidates[@]}" in

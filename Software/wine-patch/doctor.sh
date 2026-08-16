@@ -30,6 +30,23 @@ ok()  { echo "  [ ok ] $*"; }
 bad() { echo "  [ !! ] $*"; }
 inf() { echo "         $*"; }
 
+# Print the bottle paths recorded in one of Whisky's BottleVM.plist files.
+# Paths are stored as file:// URLs, so they need URL-decoding for folders with
+# spaces in them.
+read_bottle_registry() {
+  python3 - "$1" 2>/dev/null <<'PLIST_EOF'
+import plistlib, sys, urllib.parse
+try:
+    d = plistlib.load(open(sys.argv[1], 'rb'))
+except Exception:
+    sys.exit(0)
+for e in d.get('paths', []):
+    u = e.get('relative', '') if isinstance(e, dict) else str(e)
+    if u.startswith('file://'):
+        print(urllib.parse.unquote(u[7:]).rstrip('/'))
+PLIST_EOF
+}
+
 echo "==================================================="
 echo "  Whisky mouse-fix doctor"
 echo "  $(date '+%Y-%m-%d %H:%M')"
@@ -98,49 +115,64 @@ fi
 # folder - Whisky supports putting them anywhere, external drives included - so
 # scanning one directory reports "no bottles" on a machine that has one.
 hdr "Bottles"
-REGISTRY="$HOME/Library/Containers/com.franke.Whisky/BottleVM.plist"
-registered() {
-  [ -f "$REGISTRY" ] || return 0
-  python3 - "$REGISTRY" 2>/dev/null <<'PY'
-import plistlib, sys, urllib.parse
-try: d = plistlib.load(open(sys.argv[1],'rb'))
-except Exception: sys.exit(0)
-for e in d.get('paths', []):
-    u = e.get('relative','') if isinstance(e, dict) else str(e)
-    if u.startswith('file://'): print(urllib.parse.unquote(u[7:]).rstrip('/'))
-PY
-}
+# Whisky's data lives under one of several roots depending on which build
+# created it - the maintained fork, or the ARCHIVED original that
+# `brew install --cask whisky` still installs - and either can be sandboxed
+# (Containers/) or not (Application Support/). Checking only one is how a
+# machine with a perfectly good bottle gets told it has none.
+ROOTS=(
+  "$HOME/Library/Containers/com.franke.Whisky"
+  "$HOME/Library/Application Support/com.franke.Whisky"
+  "$HOME/Library/Containers/com.isaacmarovitz.Whisky"
+  "$HOME/Library/Application Support/com.isaacmarovitz.Whisky"
+)
+echo "  Locations checked:"
+for r in "${ROOTS[@]}"; do
+  [ -d "$r" ] && echo "    [found]   ${r/#$HOME/~}" || echo "    [absent]  ${r/#$HOME/~}"
+done
+echo ""
 
-if [ -f "$REGISTRY" ]; then
-  ok "Whisky's bottle registry found"
-  REG_COUNT=0
-  while IFS= read -r b; do
-    [ -n "$b" ] || continue
-    REG_COUNT=$((REG_COUNT+1))
-    if [ -d "$b/drive_c" ]; then
-      name=$(plutil -extract info.name raw "$b/Metadata.plist" 2>/dev/null || echo "unnamed")
-      steam=""
-      [ -f "$b/drive_c/Program Files (x86)/Steam/steam.exe" ] && steam="  [has Steam]"
-      inf "\"$name\"$steam"
-      inf "  $b"
-    else
-      bad "registered but MISSING from disk:"
-      inf "  $b"
-      inf "  (external drive not plugged in? or the bottle was deleted)"
-    fi
-  done < <(registered)
-  [ "$REG_COUNT" = 0 ] && bad "registry is empty - no bottles created yet"
-else
-  bad "no bottle registry - has Whisky been opened and a bottle created?"
-fi
+# Gather every candidate first, then dedupe - the registry and the folder scan
+# usually name the same bottle.
+SEEN=$(mktemp)
+for r in "${ROOTS[@]}"; do
+  [ -f "$r/BottleVM.plist" ] && read_bottle_registry "$r/BottleVM.plist" >> "$SEEN"
+  if [ -d "$r/Bottles" ]; then
+    for b in "$r/Bottles"/*/; do
+      [ -d "${b}drive_c" ] && echo "${b%/}" >> "$SEEN"
+    done
+  fi
+done
 
-# The default folder too, in case the registry is stale.
-if [ -d "$BOTTLES" ]; then
-  n=0
-  for b in "$BOTTLES"/*/; do [ -d "${b}drive_c" ] && n=$((n+1)); done
-  inf "default folder holds $n bottle(s)"
-else
-  inf "default folder does not exist (fine if bottles live elsewhere)"
+FOUND=0
+while IFS= read -r b; do
+  [ -n "$b" ] || continue
+  if [ -d "$b/drive_c" ]; then
+    FOUND=$((FOUND+1))
+    name=$(plutil -extract info.name raw "$b/Metadata.plist" 2>/dev/null || echo "unnamed")
+    steam=""; [ -f "$b/drive_c/Program Files (x86)/Steam/steam.exe" ] && steam="  [has Steam]"
+    ok "\"$name\"$steam"; inf "$b"
+  else
+    bad "registered but missing from disk: $b"
+    inf "(external drive unplugged, or the bottle was deleted)"
+  fi
+done < <(sort -u "$SEEN")
+rm -f "$SEEN"
+
+# Still nothing? Stop guessing at paths and actually search the disk.
+if [ "$FOUND" = 0 ]; then
+  bad "no bottle in any known location - searching your home folder..."
+  HITS=$(find "$HOME" -maxdepth 8 -name "drive_c" -type d 2>/dev/null | head -10)
+  if [ -n "$HITS" ]; then
+    echo ""
+    ok "found a Wine prefix the scripts didn't know about:"
+    echo "$HITS" | while IFS= read -r d; do inf "$(dirname "$d")"; done
+    echo ""
+    inf "point the scripts at it:"
+    inf "  echo '$(dirname "$(echo "$HITS" | head -1)")' > \"$REPO/Playing/bottle.conf\""
+  else
+    inf "none found anywhere - open Whisky and create a bottle"
+  fi
 fi
 
 # --- graphics ---------------------------------------------------------------
