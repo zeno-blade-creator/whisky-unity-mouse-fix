@@ -128,7 +128,17 @@ ROOTS=(
 )
 echo "  Locations checked:"
 for r in "${ROOTS[@]}"; do
-  [ -d "$r" ] && echo "    [found]   ${r/#$HOME/~}" || echo "    [absent]  ${r/#$HOME/~}"
+  if [ -d "$r" ]; then
+    echo "    [found]   ${r/#$HOME/~}"
+    # Show what is actually inside. Reporting only "found/absent" hid the fact
+    # that a root existed but held something other than the expected Bottles
+    # folder - which is exactly the case that stalled this diagnosis.
+    for item in "$r"/*; do
+      [ -e "$item" ] && echo "                 - $(basename "$item")"
+    done
+  else
+    echo "    [absent]  ${r/#$HOME/~}"
+  fi
 done
 echo ""
 
@@ -159,19 +169,45 @@ while IFS= read -r b; do
 done < <(sort -u "$SEEN")
 rm -f "$SEEN"
 
-# Still nothing? Stop guessing at paths and actually search the disk.
+# Still nothing? Stop guessing at paths and search the disk properly.
+# A bottle does NOT have to be in the home folder - Whisky supports external and
+# network volumes - so searching only ~ can come back empty on a machine that is
+# happily running games.
 if [ "$FOUND" = 0 ]; then
-  bad "no bottle in any known location - searching your home folder..."
+  bad "no bottle in any known location - searching the disk..."
+  inf "home folder..."
   HITS=$(find "$HOME" -maxdepth 8 -name "drive_c" -type d 2>/dev/null | head -10)
+
+  if [ -z "$HITS" ] && [ -d /Volumes ]; then
+    inf "attached volumes..."
+    for v in /Volumes/*; do
+      [ -d "$v" ] || continue
+      inf "  checking $v"
+      more=$(find "$v" -maxdepth 8 -name "drive_c" -type d 2>/dev/null | head -5)
+      [ -n "$more" ] && HITS="$HITS$more"$'\n'
+    done
+  fi
+  if [ -z "$HITS" ]; then
+    inf "shared folders..."
+    HITS=$(find /Users/Shared -maxdepth 8 -name "drive_c" -type d 2>/dev/null | head -5)
+  fi
+
   if [ -n "$HITS" ]; then
     echo ""
     ok "found a Wine prefix the scripts didn't know about:"
-    echo "$HITS" | while IFS= read -r d; do inf "$(dirname "$d")"; done
+    echo "$HITS" | while IFS= read -r d; do [ -n "$d" ] && inf "$(dirname "$d")"; done
     echo ""
     inf "point the scripts at it:"
     inf "  echo '$(dirname "$(echo "$HITS" | head -1)")' > \"$REPO/Playing/bottle.conf\""
   else
-    inf "none found anywhere - open Whisky and create a bottle"
+    echo ""
+    bad "no Wine prefix exists anywhere this script can see."
+    inf "That means no bottle has been created yet, OR it is on a drive or"
+    inf "network share that isn't mounted right now."
+    inf ""
+    inf "Open Whisky and look at its bottle list:"
+    inf "  - if it shows a bottle, click it and note the path it reports"
+    inf "  - if the list is empty, create a bottle, then install Steam into it"
   fi
 fi
 
