@@ -163,9 +163,9 @@ window and input operations.
 - **The installer refuses to install anything it can't verify.** It compares the
   built engine against your existing one and stops if they don't match up.
 
-If you'd rather read the code first, it's five shell scripts and one Python file
+If you'd rather read the code first, it's six shell scripts and one Python file
 in `Software/wine-patch/` — `install.sh` (the one you run), `build-engine.sh`,
-`verify-engine.sh`, `install-pointer-fix.sh`, `doctor.sh`, and
+`verify-engine.sh`, `install-pointer-fix.sh`, `doctor.sh`, `engine-detect.sh`, and
 `apply-pointer-patch.py`.
 
 ---
@@ -228,6 +228,7 @@ list them and ask you to save the right ID into `Playing/bottle.conf`.
 |---|---|
 | `wine-patch/` | The fix: `install.sh` (the one command), the build and install scripts, and your backed-up original engine |
 | `wine-patch/doctor.sh` | **Run this when anything goes wrong.** Checks everything and prints one report you can send to someone. Changes nothing. |
+| `wine-patch/engine-detect.sh` | Finds the Wine engine and works out which architecture it was built for, instead of assuming. Sourced by the other scripts, not run on its own. |
 | [`SETUP.md`](Software/SETUP.md) | Complete walkthrough from a Mac with nothing installed |
 | [`FINDINGS.md`](Software/FINDINGS.md) | All six problems, with the evidence for each |
 | [`CREDITS.md`](Software/CREDITS.md) | Who wrote what, and the licence |

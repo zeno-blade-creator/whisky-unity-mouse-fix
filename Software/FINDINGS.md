@@ -511,6 +511,19 @@ compiler triple, `--enable-archs` and mingw prefix from what it finds.
 code and must match its engine. It makes the patch *portable to a different
 engine*, and makes the eventual failure legible instead of cryptic.
 
+### Verified after the refactor (2026-08-17)
+
+The refactor touches shell scripts only, and the installed engine binary is
+byte-identical before and after (`e75a4dc2b6755a7ce9faf7bf204aa9551fd426f9`), so
+there was nothing that *could* regress — but it was checked rather than assumed:
+
+- `doctor.sh` still reports the fix as **INSTALLED** against the same engine, and
+  now leads with host arch / engine arch / Rosetta status.
+- `install-pointer-fix.sh status` still reads the engine as patched.
+- **PEAK was launched and played — mouse clicks work.** This is the check that
+  matters, because it exercises the actual `WM_POINTER` path rather than a hash.
+
+
 ---
 
 ## Attribution
