@@ -20,11 +20,26 @@
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-WINE="$HOME/Library/Application Support/com.franke.Whisky/Libraries/Wine"
-TARGET_SO="$WINE/lib/wine/x86_64-unix/win32u.so"
-TARGET_DLL="$WINE/lib/wine/x86_64-windows/win32u.dll"
+# Engine location and architecture are discovered rather than hardcoded, so this
+# still finds the engine after a move to CrossOver. See engine-detect.sh.
+. "$HERE/engine-detect.sh"
+if [ "$ENGINE_FOUND" != yes ]; then
+  echo "No Wine engine found. Open Whisky once to download it, or install CrossOver."
+  echo ""; echo "VOID - nothing was changed."; exit 1
+fi
+# Refuse to install into an engine that cannot execute on this Mac. Writing a
+# correct library into an unrunnable engine produces a loader error that reads
+# exactly like a broken patch, and that wrong diagnosis is expensive.
+if [ "$ENGINE_NEEDS_ROSETTA" = yes ] && [ "$ROSETTA_PRESENT" = no ]; then
+  echo "This engine is $ENGINE_ARCH, this Mac is $HOST_ARCH, and Rosetta 2 is absent."
+  echo "The engine cannot run, so patching it would prove nothing. Install Rosetta"
+  echo "(softwareupdate --install-rosetta) or move to an ARM64-native engine."
+  echo ""; echo "VOID - nothing was changed."; exit 1
+fi
+TARGET_SO="$ENGINE_WIN32U"
+TARGET_DLL="$ENGINE_WIN_DIR/win32u.dll"
 BUILT_SO="$HERE/crossover-src/sources/wine/dlls/win32u/win32u.so"
-BUILT_DLL="$HERE/crossover-src/sources/wine/dlls/win32u/x86_64-windows/win32u.dll"
+BUILT_DLL="$HERE/crossover-src/sources/wine/dlls/win32u/${ENGINE_ARCH}-windows/win32u.dll"
 ORIG="$HERE/whisky-original"
 
 # Imports that legitimately differ, with the reason each one is non-functional.

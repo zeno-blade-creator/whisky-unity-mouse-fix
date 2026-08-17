@@ -419,6 +419,100 @@ Five build failures, each pointing away from its own cause:
 
 ---
 
+## The Rosetta deadline — a separate problem from the pointer bug
+
+These two get conflated constantly, so: **they share no mechanism.**
+
+The **pointer bug** is a Windows API problem. Unity 6 calls `EnableMouseInPointer()`
+and then listens only for `WM_POINTER` messages; Whisky's Wine never implemented
+them and keeps sending `WM_MOUSE`, so clicks land nowhere. Keyboard input was
+never affected (different path), which is why WASD worked while clicking didn't,
+and why "use a controller" was a workaround — XInput is a third path, also
+unaffected. **This is fixed**, by building CrossOver 26.3's implementation into
+`win32u.so`.
+
+The **Rosetta problem** is one layer below Wine, about CPU instruction sets, and
+is *not* fixed because it cannot be fixed here.
+
+### Why the engine needs Rosetta
+
+Wine translates Windows API calls into macOS ones — but the game is a Windows
+**x86** binary, real Intel machine code, and something must execute it on an ARM
+chip. Two architectures exist:
+
+1. **Compile all of Wine as x86_64 and let Rosetta translate the whole process.**
+   Wine and game together as one Intel program. This is what Whisky and Game
+   Porting Toolkit do. Measured here: `bin/wine`, `bin/wine64` and `bin/wineserver`
+   are all `Mach-O 64-bit executable x86_64`, and `lib/wine/` contains only
+   `i386-windows`, `x86_64-unix` and `x86_64-windows` — **no arm64 directory at
+   all.**
+2. **Compile Wine itself as ARM64-native with an x86 emulator embedded**, so only
+   the *game's* code is emulated. This survives Rosetta's removal.
+
+### The dates
+
+| When | What |
+|---|---|
+| macOS 26.4 / 26.5 | "Support Ending for Intel-based Apps" alerts begin |
+| **macOS 27** (fall 2026) | Apple-silicon only; removes Rosetta 2 on upgrade, reinstallable |
+| **macOS 28** (fall 2027) | Rosetta largely gone. A narrow carve-out remains for "older, unmaintained gaming titles that rely on Intel-based frameworks" — whether Wine qualifies is unclear, and Wine is not itself a game |
+
+### Whisky is a dead end for this
+
+Whisky was **discontinued in April 2025**; its developer endorsed CrossOver on the
+grounds that CodeWeavers' revenue is what keeps Wine-on-Mac alive at all. Whisky's
+engine is frozen as Intel-only. Making it ARM64-native would mean rebuilding the
+engine in Wine's "new WoW64" mode *and* bundling an x86-on-ARM emulator *and*
+solving macOS's W^X restriction on JIT memory. That is an organisation's project,
+not a patch — and nobody is doing it for a discontinued app.
+
+### CrossOver is the migration target, and it already shipped
+
+On **2026-07-31** CodeWeavers released a
+[CrossOver Preview built natively for ARM64 on macOS](https://www.codeweavers.com/blog/mjohnson/2026/7/31/crossover-preview-the-right-to-bear-arm64-on-mac),
+using **FEX** — their own open-source x86 emulator — instead of Rosetta. That is
+architecture #2, shipping. CrossOver 27 (penciled for early 2027) drops Intel Macs
+entirely, landing before Rosetta's removal.
+
+Preview limitations at time of writing: no D3DMetal, Direct3D 12 still coming,
+many launchers non-functional, and **existing bottles cannot be converted** — they
+must be rebuilt.
+
+### The wrinkle: migrating re-introduces the pointer bug
+
+CodeWeavers has never shipped the pointer implementation in a CrossOver *release*,
+even though it exists in their source — which is exactly where this repo got it.
+So a CrossOver migration means re-applying a pointer fix. Two published options
+already exist:
+
+- [dabielf/crossover-unity-mouse-fix](https://github.com/dabielf/crossover-unity-mouse-fix)
+  — pre-patched binaries for CrossOver 26.0, no compilation
+- [kiku-jw/peak-crossover-mouse-fix](https://github.com/kiku-jw/peak-crossover-mouse-fix)
+  — CrossOver 25.1.1 and 26.0, PEAK-specific
+
+…or rebuild this repo's patch against CrossOver's engine, which is what
+`engine-detect.sh` exists to make possible.
+
+### What was changed here to prepare
+
+The scripts used to hardcode both the engine root (`com.franke.Whisky`) and its
+architecture (`x86_64-unix`). Neither survives an engine change, and a hardcoded
+path doesn't fail with "the engine moved" — it fails with "file not found" deep in
+a build, which reads like a broken patch.
+
+`engine-detect.sh` now discovers both: it searches every known engine root
+(both Whisky bundle ids, sandboxed and not, plus CrossOver) and **globs**
+`lib/wine/*-unix/` rather than assuming the arch. `build-engine.sh` derives its
+compiler triple, `--enable-archs` and mingw prefix from what it finds.
+`doctor.sh` reports host arch, engine arch and Rosetta status up front, and
+`install-pointer-fix.sh` refuses to patch an engine that cannot execute.
+
+**This does not make the patch Rosetta-independent** — `win32u.so` is compiled
+code and must match its engine. It makes the patch *portable to a different
+engine*, and makes the eventual failure legible instead of cryptic.
+
+---
+
 ## Attribution
 
 The pointer implementation is **CodeWeavers' work**, from CrossOver 26.3, used

@@ -21,7 +21,11 @@ set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 WLIB="$HOME/Library/Application Support/com.franke.Whisky/Libraries"
-ENGINE="$WLIB/Wine/lib/wine/x86_64-unix/win32u.so"
+# Engine location and architecture are discovered, not assumed - see
+# engine-detect.sh for why. ENGINE still names win32u.so, so everything below
+# that reads it keeps working unchanged.
+. "$HERE/engine-detect.sh"
+ENGINE="$ENGINE_WIN32U"
 ORIG="$HERE/whisky-original/win32u.so"
 
 hdr() { echo ""; echo "=== $* ==="; }
@@ -81,6 +85,28 @@ if [ "${MAJOR:-0}" -ge 15 ] 2>/dev/null; then
   ok "macOS version supported by Whisky"
 else
   bad "Whisky needs macOS Sequoia 15.0 or later - this is $(sw_vers -productVersion)"
+fi
+
+# --- engine and architecture ------------------------------------------------
+# Asked before anything else about the patch, because if the engine cannot run
+# on this Mac at all then every check below it is answering the wrong question.
+# The failure this pre-empts is Rosetta going away: an x86_64 engine on an
+# Apple-silicon Mac with no Rosetta produces a dynamic-loader error that looks
+# like a corrupt patch and is nothing of the sort.
+hdr "Engine and architecture"
+engine_report
+ENGINE_RC=$?
+if [ "$ENGINE_RC" -eq 1 ]; then
+  bad "no Wine engine found - open Whisky once to download it, or install CrossOver"
+elif [ "$ENGINE_RC" -eq 2 ]; then
+  bad "engine cannot run on this Mac (see above) - the patch is not the problem"
+elif [ "$ENGINE_NEEDS_ROSETTA" = yes ]; then
+  ok "engine runs (through Rosetta 2)"
+  inf "Rosetta is removed on upgrade to macOS 27 and effectively gone in macOS 28."
+  inf "When that happens this engine stops working and no patch can fix it -"
+  inf "the replacement is an ARM64-native engine (CrossOver's FEX-based build)."
+else
+  ok "engine architecture matches the host - no Rosetta involved"
 fi
 
 # --- Whisky -----------------------------------------------------------------

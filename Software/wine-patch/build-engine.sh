@@ -67,9 +67,27 @@ set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 TREE="$HERE/crossover-src/sources/wine"
-WLIB_REAL="$HOME/Library/Application Support/com.franke.Whisky/Libraries/Wine/lib"
+# The engine's location AND the architecture it was built for are discovered,
+# not assumed - so this builds a matching library for whatever engine is
+# actually installed. See engine-detect.sh.
+. "$HERE/engine-detect.sh"
+if [ "$ENGINE_FOUND" != yes ]; then
+  echo "ERROR: no Wine engine found to build against."
+  echo "       Open Whisky once to download it, or install CrossOver."
+  echo ""; echo "VOID"; exit 1
+fi
+WLIB_REAL="$ENGINE_LIB"
 WLIB="$HOME/.whisky-wine-lib"          # trap 1: space-free path
-REFERENCE="$WLIB/wine/x86_64-unix/win32u.so"
+REFERENCE="$WLIB/wine/${ENGINE_ARCH}-unix/win32u.so"
+# The compiler triple has to match the engine, not the host. Building x86_64 on
+# an Apple-silicon Mac is the normal case today; it stops being normal the day
+# the engine goes ARM64-native, and a hardcoded triple would silently produce a
+# library the engine cannot load.
+case "$ENGINE_ARCH" in
+  x86_64)          BUILD_TRIPLE="x86_64-apple-darwin";  BUILD_CFLAGS_ARCH="x86_64"; MINGW_PREFIX="x86_64-w64-mingw32" ;;
+  aarch64|arm64)   BUILD_TRIPLE="aarch64-apple-darwin"; BUILD_CFLAGS_ARCH="arm64";  MINGW_PREFIX="aarch64-w64-mingw32" ;;
+  *)               echo "ERROR: unsupported engine arch '$ENGINE_ARCH'"; echo ""; echo "VOID"; exit 1 ;;
+esac
 FT_HEADERS="/opt/homebrew/include/freetype2"
 JOBS=$(sysctl -n hw.ncpu)
 
@@ -88,7 +106,7 @@ fail=0
                     echo "       Extract it from crossover-sources-26.3.0.tar.gz:"
                     echo "         tar xzf crossover-sources-26.3.0.tar.gz -C crossover-src sources/wine"; fail=1; }
 [ -f "$REFERENCE" ] || { echo "ERROR: Whisky reference engine missing"; fail=1; }
-[ -f "$WLIB/libfreetype.6.dylib" ] || { echo "ERROR: x86_64 libfreetype missing in Whisky"; fail=1; }
+[ -f "$WLIB/libfreetype.6.dylib" ] || { echo "ERROR: $ENGINE_ARCH libfreetype missing in the engine"; fail=1; }
 [ -d "$FT_HEADERS" ] || { echo "ERROR: freetype headers missing. brew install freetype"; fail=1; }
 [ "$fail" = 0 ] || { echo ""; echo "VOID - preconditions not met."; exit 1; }
 
@@ -96,11 +114,11 @@ fail=0
 BISON_V=$(bison --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+' | head -1)
 echo "Toolchain:"
 printf "  %-8s %s (%s)\n" "bison" "$(command -v bison)" "$BISON_V"
-printf "  %-8s %s\n" "mingw" "$(command -v x86_64-w64-mingw32-gcc)"
+printf "  %-8s %s\n" "mingw" "$(command -v ${MINGW_PREFIX}-gcc)"
 if [ -z "${BISON_V%%.*}" ] || [ "${BISON_V%%.*}" -lt 3 ] 2>/dev/null; then
   echo ""; echo "VOID - bison $BISON_V too old (need 3.0+):  brew install bison"; exit 1
 fi
-command -v x86_64-w64-mingw32-gcc >/dev/null || {
+command -v "${MINGW_PREFIX}-gcc" >/dev/null || {
   echo ""; echo "VOID - mingw-w64 missing:  brew install mingw-w64"; exit 1; }
 echo ""
 
@@ -115,9 +133,9 @@ ln -sfn "$WLIB/libfreetype.6.dylib" "$TREE/libfreetype.6.dylib"
 echo "[1/4] configure..."
 cd "$TREE" || exit 1
 ./configure \
-  --host=x86_64-apple-darwin --build=x86_64-apple-darwin \
-  CC="clang -arch x86_64" CXX="clang++ -arch x86_64" \
-  --enable-archs=x86_64 --without-x --disable-tests \
+  --host="$BUILD_TRIPLE" --build="$BUILD_TRIPLE" \
+  CC="clang -arch $BUILD_CFLAGS_ARCH" CXX="clang++ -arch $BUILD_CFLAGS_ARCH" \
+  --enable-archs="$ENGINE_ARCH" --without-x --disable-tests \
   FREETYPE_CFLAGS="-I$FT_HEADERS" \
   FREETYPE_LIBS="-L$WLIB -lfreetype" \
   LDFLAGS="-L$WLIB" \
